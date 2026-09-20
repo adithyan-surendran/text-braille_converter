@@ -74,10 +74,18 @@ export default function Converter() {
       await navigator.clipboard.writeText(output);
       setCopied(true);
       setCopyError(null);
-      setTimeout(() => setCopied(false), 2000);
+      setStatusMessage('Copied to clipboard.');
+      setTimeout(() => {
+        setCopied(false);
+        setStatusMessage('');
+      }, 2000);
     } catch {
       setCopyError('Failed to copy');
-      setTimeout(() => setCopyError(null), 2500);
+      setStatusMessage('Failed to copy to clipboard.');
+      setTimeout(() => {
+        setCopyError(null);
+        setStatusMessage('');
+      }, 2500);
     }
   };
 
@@ -237,7 +245,7 @@ export default function Converter() {
             type="button"
             onClick={handleCopy}
             disabled={!output || isLoading}
-            aria-label={copied ? 'Output copied' : 'Copy output to clipboard'}
+            aria-label="Copy output to clipboard"
             className={`flex-1 sm:flex-initial inline-flex items-center justify-center px-6 py-3 rounded-xl font-medium text-base border shadow-2xs focus-visible:outline-2 focus-visible:outline-offset-2 transition-all cursor-pointer min-h-[44px] ${
               copied
                 ? 'bg-emerald-50 border-emerald-300 text-emerald-700 focus-visible:outline-emerald-600 focus-visible:ring-2 focus-visible:ring-emerald-400/30'

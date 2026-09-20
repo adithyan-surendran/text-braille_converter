@@ -1,4 +1,5 @@
 export type ConversionMode = 'text-to-braille' | 'braille-to-text';
+export type BrailleSize = 'small' | 'medium' | 'large' | 'extra-large';
 
 export type EncodeRequest = {
   text: string;

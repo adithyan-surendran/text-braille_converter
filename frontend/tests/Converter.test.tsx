@@ -906,4 +906,227 @@ describe('Converter Component', () => {
       });
     });
   });
+
+  describe('V3.4 Braille Readability, Size Controls, and Copy Feedback', () => {
+    it('renders size controls with accessible labels and comfortable default Braille formatting', () => {
+      render(<Converter />);
+
+      const sizeGroup = screen.getByRole('group', { name: 'Braille font size controls' });
+      expect(sizeGroup).toBeInTheDocument();
+
+      const decreaseBtn = screen.getByRole('button', { name: 'Decrease Braille font size' });
+      const resetBtn = screen.getByRole('button', { name: 'Reset Braille font size' });
+      const increaseBtn = screen.getByRole('button', { name: 'Increase Braille font size' });
+
+      expect(decreaseBtn).toBeInTheDocument();
+      expect(resetBtn).toBeInTheDocument();
+      expect(increaseBtn).toBeInTheDocument();
+
+      const outputRegion = screen.getByRole('region', { name: 'Braille output' });
+      expect(outputRegion).toHaveAttribute('data-braille-size', 'medium');
+      expect(outputRegion.className).toContain('leading-loose');
+      expect(outputRegion.className).toContain('tracking-widest');
+    });
+
+    it('increases Braille font size when Increase button is activated', async () => {
+      const user = userEvent.setup();
+      render(<Converter />);
+
+      const increaseBtn = screen.getByRole('button', { name: 'Increase Braille font size' });
+      const outputRegion = screen.getByRole('region', { name: 'Braille output' });
+
+      expect(outputRegion).toHaveAttribute('data-braille-size', 'medium');
+      await user.click(increaseBtn);
+
+      expect(outputRegion).toHaveAttribute('data-braille-size', 'large');
+      expect(outputRegion.className).toContain('text-2xl');
+    });
+
+    it('decreases Braille font size when Decrease button is activated', async () => {
+      const user = userEvent.setup();
+      render(<Converter />);
+
+      const decreaseBtn = screen.getByRole('button', { name: 'Decrease Braille font size' });
+      const outputRegion = screen.getByRole('region', { name: 'Braille output' });
+
+      expect(outputRegion).toHaveAttribute('data-braille-size', 'medium');
+      await user.click(decreaseBtn);
+
+      expect(outputRegion).toHaveAttribute('data-braille-size', 'small');
+      expect(outputRegion.className).toContain('text-lg');
+    });
+
+    it('enforces minimum and maximum size boundaries correctly', async () => {
+      const user = userEvent.setup();
+      render(<Converter />);
+
+      const decreaseBtn = screen.getByRole('button', { name: 'Decrease Braille font size' });
+      const increaseBtn = screen.getByRole('button', { name: 'Increase Braille font size' });
+      const outputRegion = screen.getByRole('region', { name: 'Braille output' });
+
+      // Decrease to minimum ('small')
+      await user.click(decreaseBtn);
+      expect(outputRegion).toHaveAttribute('data-braille-size', 'small');
+      expect(decreaseBtn).toBeDisabled();
+
+      // Attempt to decrease past minimum
+      await user.click(decreaseBtn);
+      expect(outputRegion).toHaveAttribute('data-braille-size', 'small');
+
+      // Increase to 'medium', then 'large', then 'extra-large' (maximum)
+      await user.click(increaseBtn); // to medium
+      expect(outputRegion).toHaveAttribute('data-braille-size', 'medium');
+      expect(decreaseBtn).not.toBeDisabled();
+
+      await user.click(increaseBtn); // to large
+      expect(outputRegion).toHaveAttribute('data-braille-size', 'large');
+
+      await user.click(increaseBtn); // to extra-large
+      expect(outputRegion).toHaveAttribute('data-braille-size', 'extra-large');
+      expect(increaseBtn).toBeDisabled();
+
+      // Attempt to increase past maximum
+      await user.click(increaseBtn);
+      expect(outputRegion).toHaveAttribute('data-braille-size', 'extra-large');
+    });
+
+    it('resets Braille font size to default (medium) when Reset button is activated', async () => {
+      const user = userEvent.setup();
+      render(<Converter />);
+
+      const increaseBtn = screen.getByRole('button', { name: 'Increase Braille font size' });
+      const resetBtn = screen.getByRole('button', { name: 'Reset Braille font size' });
+      const outputRegion = screen.getByRole('region', { name: 'Braille output' });
+
+      // Change size to extra-large
+      await user.click(increaseBtn);
+      await user.click(increaseBtn);
+      expect(outputRegion).toHaveAttribute('data-braille-size', 'extra-large');
+
+      // Reset
+      await user.click(resetBtn);
+      expect(outputRegion).toHaveAttribute('data-braille-size', 'medium');
+    });
+
+    it('supports operating size controls via keyboard navigation and focus indicators', async () => {
+      const user = userEvent.setup();
+      render(<Converter />);
+
+      const decreaseBtn = screen.getByRole('button', { name: 'Decrease Braille font size' });
+      const resetBtn = screen.getByRole('button', { name: 'Reset Braille font size' });
+      const increaseBtn = screen.getByRole('button', { name: 'Increase Braille font size' });
+      const outputRegion = screen.getByRole('region', { name: 'Braille output' });
+
+      // Check visible focus classes
+      expect(decreaseBtn.className).toContain('focus-visible:outline');
+      expect(resetBtn.className).toContain('focus-visible:outline');
+      expect(increaseBtn.className).toContain('focus-visible:outline');
+
+      // Keyboard navigation: focus increase and press Enter
+      increaseBtn.focus();
+      expect(increaseBtn).toHaveFocus();
+      await user.keyboard('{Enter}');
+      expect(outputRegion).toHaveAttribute('data-braille-size', 'large');
+
+      // Keyboard navigation: focus reset and press Space
+      resetBtn.focus();
+      expect(resetBtn).toHaveFocus();
+      await user.keyboard(' ');
+      expect(outputRegion).toHaveAttribute('data-braille-size', 'medium');
+    });
+
+    it('displays Braille size controls only for Braille output, hiding them in Braille → Text mode', async () => {
+      const user = userEvent.setup();
+      render(<Converter />);
+
+      expect(screen.getByRole('group', { name: 'Braille font size controls' })).toBeInTheDocument();
+
+      // Switch to Braille -> Text mode
+      const brailleModeBtn = screen.getByRole('button', { name: /braille → text/i });
+      await user.click(brailleModeBtn);
+
+      // Output is text, so Braille size controls are hidden
+      expect(screen.queryByRole('group', { name: 'Braille font size controls' })).not.toBeInTheDocument();
+
+      // Switch back to Text -> Braille mode
+      const textModeBtn = screen.getByRole('button', { name: /text → braille/i });
+      await user.click(textModeBtn);
+
+      expect(screen.getByRole('group', { name: 'Braille font size controls' })).toBeInTheDocument();
+    });
+
+    it('announces "Copied to clipboard." through polite live region and displays visual feedback on copy success', async () => {
+      const user = userEvent.setup();
+      const writeTextMock = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText: writeTextMock },
+        configurable: true,
+        writable: true,
+      });
+
+      vi.mocked(api.encodeText).mockResolvedValueOnce({
+        input: 'Accessibility',
+        braille: '⠠⠁⠉⠉⠑⠎⠎⠊⠃⠊⠇⠊⠞⠽',
+      });
+
+      render(<Converter />);
+
+      const textarea = screen.getByLabelText(/english text/i);
+      await user.type(textarea, 'Accessibility');
+      await user.click(screen.getByRole('button', { name: /^convert$/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText('⠠⠁⠉⠉⠑⠎⠎⠊⠃⠊⠇⠊⠞⠽')).toBeInTheDocument();
+      });
+
+      const copyBtn = screen.getByRole('button', { name: /copy output to clipboard/i });
+      await user.click(copyBtn);
+
+      expect(writeTextMock).toHaveBeenCalledWith('⠠⠁⠉⠉⠑⠎⠎⠊⠃⠊⠇⠊⠞⠽');
+
+      // Visual feedback
+      await waitFor(() => {
+        expect(screen.getByText('Copied!')).toBeInTheDocument();
+      });
+
+      // Accessible status announcement
+      expect(screen.getByRole('status')).toHaveTextContent('Copied to clipboard.');
+    });
+
+    it('announces "Failed to copy to clipboard." through live status region and displays visual feedback on copy failure', async () => {
+      const user = userEvent.setup();
+      const writeTextMock = vi.fn().mockRejectedValueOnce(new Error('Permission denied'));
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText: writeTextMock },
+        configurable: true,
+        writable: true,
+      });
+
+      vi.mocked(api.encodeText).mockResolvedValueOnce({
+        input: 'Fail Test',
+        braille: '⠠⠋⠁⠊⠇',
+      });
+
+      render(<Converter />);
+
+      const textarea = screen.getByLabelText(/english text/i);
+      await user.type(textarea, 'Fail Test');
+      await user.click(screen.getByRole('button', { name: /^convert$/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText('⠠⠋⠁⠊⠇')).toBeInTheDocument();
+      });
+
+      const copyBtn = screen.getByRole('button', { name: /copy output to clipboard/i });
+      await user.click(copyBtn);
+
+      // Visual feedback
+      await waitFor(() => {
+        expect(screen.getByText('Failed to copy')).toBeInTheDocument();
+      });
+
+      // Accessible status announcement
+      expect(screen.getByRole('status')).toHaveTextContent('Failed to copy to clipboard.');
+    });
+  });
 });
