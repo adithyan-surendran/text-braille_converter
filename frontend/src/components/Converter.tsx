@@ -14,6 +14,7 @@ export default function Converter() {
   const [copied, setCopied] = useState<boolean>(false);
   const [copyError, setCopyError] = useState<string | null>(null);
   const [mobileTab, setMobileTab] = useState<'input' | 'output'>('input');
+  const [statusMessage, setStatusMessage] = useState<string>('');
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const outputRef = useRef<HTMLDivElement>(null);
@@ -23,6 +24,7 @@ export default function Converter() {
     setCopied(false);
     setCopyError(null);
     setMobileTab('output');
+    setStatusMessage('Converting...');
     setIsLoading(true);
 
     let isSuccess = false;
@@ -35,8 +37,10 @@ export default function Converter() {
         setOutput(result.text);
       }
       isSuccess = true;
+      setStatusMessage('Conversion complete.');
     } catch (err) {
       setMobileTab('input');
+      setStatusMessage('Conversion failed.');
       if (err instanceof Error) {
         setError(err.message);
       } else {
@@ -79,6 +83,7 @@ export default function Converter() {
     setError(null);
     setCopied(false);
     setCopyError(null);
+    setStatusMessage('');
     setMobileTab('input');
   };
 
@@ -88,11 +93,22 @@ export default function Converter() {
     setError(null);
     setCopied(false);
     setCopyError(null);
+    setStatusMessage('');
     setMobileTab('input');
   };
 
   return (
     <div className="w-full max-w-5xl mx-auto space-y-4 sm:space-y-6">
+      {/* Screen Reader Status Announcements */}
+      <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {statusMessage}
+      </div>
+
       {/* Mode Toggle Controls */}
       <div className="flex justify-center">
         <ModeToggle
@@ -107,6 +123,7 @@ export default function Converter() {
         <div
           role="alert"
           aria-live="assertive"
+          aria-atomic="true"
           className="flex items-start justify-between gap-3 p-3.5 sm:p-4 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs sm:text-sm shadow-xs"
         >
           <div className="flex items-center gap-2">
@@ -134,9 +151,11 @@ export default function Converter() {
           className="inline-flex w-full max-w-xs p-1 bg-slate-200/90 rounded-xl shadow-inner border border-slate-300/70"
         >
           <button
+            id="mobile-tab-input"
             type="button"
             role="tab"
             aria-selected={mobileTab === 'input'}
+            aria-controls="panel-input"
             onClick={() => setMobileTab('input')}
             className={`flex-1 text-center py-2 px-3 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500/20 ${
               mobileTab === 'input'
@@ -147,9 +166,11 @@ export default function Converter() {
             Input
           </button>
           <button
+            id="mobile-tab-output"
             type="button"
             role="tab"
             aria-selected={mobileTab === 'output'}
+            aria-controls="panel-output"
             onClick={() => setMobileTab('output')}
             className={`flex-1 text-center py-2 px-3 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500/20 ${
               mobileTab === 'output'
@@ -164,7 +185,7 @@ export default function Converter() {
 
       {/* Dual Panel Grid (Input & Output) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-        <div className={mobileTab === 'output' ? 'hidden md:block' : 'block'}>
+        <div id="panel-input" className={mobileTab === 'output' ? 'hidden md:block' : 'block'}>
           <InputPanel
             inputRef={inputRef}
             mode={mode}
@@ -178,7 +199,7 @@ export default function Converter() {
           />
         </div>
 
-        <div className={mobileTab === 'input' ? 'hidden md:block' : 'block'}>
+        <div id="panel-output" className={mobileTab === 'input' ? 'hidden md:block' : 'block'}>
           <OutputPanel
             outputRef={outputRef}
             mode={mode}

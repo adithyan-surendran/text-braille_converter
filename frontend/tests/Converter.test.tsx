@@ -579,4 +579,141 @@ describe('Converter Component', () => {
     const clearBtn = screen.getByRole('button', { name: /clear/i });
     expect(clearBtn.className).toMatch(/focus-visible:outline/);
   });
+
+  describe('V3.2 Screen Reader Accessibility and Status Announcements', () => {
+    it('announces "Converting..." in the accessible status live region during conversion (Requirement A)', async () => {
+      const user = userEvent.setup();
+      let resolvePromise: (val: EncodeResponse) => void;
+      const pendingPromise = new Promise<EncodeResponse>((resolve) => {
+        resolvePromise = resolve;
+      });
+      vi.mocked(api.encodeText).mockReturnValueOnce(pendingPromise);
+
+      render(<Converter />);
+
+      const statusRegion = screen.getByRole('status');
+      expect(statusRegion).toHaveAttribute('aria-live', 'polite');
+      expect(statusRegion).toHaveAttribute('aria-atomic', 'true');
+      expect(statusRegion).toHaveTextContent('');
+
+      const textarea = screen.getByLabelText(/english text/i);
+      await user.type(textarea, 'Hello');
+
+      const convertBtn = screen.getByRole('button', { name: /^convert$/i });
+      await user.click(convertBtn);
+
+      // Status region announces "Converting..." while loading
+      expect(statusRegion).toHaveTextContent('Converting...');
+      expect(convertBtn).toHaveAttribute('aria-busy', 'true');
+
+      // Resolve and verify status updates
+      resolvePromise!({ input: 'Hello', braille: '⠠⠓⠑⠇⠇⠕' });
+      await waitFor(() => {
+        expect(statusRegion).toHaveTextContent('Conversion complete.');
+      });
+    });
+
+    it('announces "Conversion complete." on success and displays the output correctly (Requirement B)', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.encodeText).mockResolvedValueOnce({
+        input: 'Test Text',
+        braille: '⠠⠞⠑⠎⠞ ⠠⠞⠑⠭⠞',
+      });
+
+      render(<Converter />);
+
+      const textarea = screen.getByLabelText(/english text/i);
+      await user.type(textarea, 'Test Text');
+
+      const convertBtn = screen.getByRole('button', { name: /^convert$/i });
+      await user.click(convertBtn);
+
+      await waitFor(() => {
+        expect(screen.getByRole('status')).toHaveTextContent('Conversion complete.');
+        expect(screen.getByText('⠠⠞⠑⠎⠞ ⠠⠞⠑⠭⠞')).toBeInTheDocument();
+      });
+    });
+
+    it('announces "Conversion failed." and displays error with role="alert" on failure, returning focus to input (Requirement C)', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.encodeText).mockRejectedValueOnce(
+        new Error('Text contains unsupported characters.')
+      );
+
+      render(<Converter />);
+
+      const textarea = screen.getByLabelText(/english text/i);
+      await user.type(textarea, 'unsupported @');
+
+      const convertBtn = screen.getByRole('button', { name: /^convert$/i });
+      await user.click(convertBtn);
+
+      await waitFor(() => {
+        expect(screen.getByRole('status')).toHaveTextContent('Conversion failed.');
+        const alert = screen.getByRole('alert');
+        expect(alert).toHaveAttribute('aria-atomic', 'true');
+        expect(alert).toHaveTextContent('Text contains unsupported characters.');
+        expect(textarea).toHaveFocus();
+      });
+    });
+
+    it('exposes meaningful accessible name and region semantics for output in both modes (Requirement D)', async () => {
+      const user = userEvent.setup();
+      render(<Converter />);
+
+      // In Text -> Braille mode
+      const brailleRegion = screen.getByRole('region', { name: 'Braille output' });
+      expect(brailleRegion).toBeInTheDocument();
+      expect(brailleRegion).toHaveAttribute('aria-label', 'Braille output');
+      expect(brailleRegion).not.toHaveAttribute('aria-live'); // Output is not live to prevent spamming
+
+      // Switch to Braille -> Text mode
+      const brailleModeBtn = screen.getByRole('button', { name: /braille → text/i });
+      await user.click(brailleModeBtn);
+
+      const textRegion = screen.getByRole('region', { name: 'Text output' });
+      expect(textRegion).toBeInTheDocument();
+      expect(textRegion).toHaveAttribute('aria-label', 'Text output');
+      expect(textRegion).not.toHaveAttribute('aria-live');
+    });
+
+    it('correctly exposes active conversion mode semantics using aria-pressed (Requirement E)', async () => {
+      const user = userEvent.setup();
+      render(<Converter />);
+
+      const modeGroup = screen.getByRole('group', { name: 'Conversion Mode' });
+      expect(modeGroup).toBeInTheDocument();
+
+      const textModeBtn = screen.getByRole('button', { name: /text → braille/i });
+      const brailleModeBtn = screen.getByRole('button', { name: /braille → text/i });
+
+      expect(textModeBtn).toHaveAttribute('aria-pressed', 'true');
+      expect(brailleModeBtn).toHaveAttribute('aria-pressed', 'false');
+
+      // Switch mode and verify updated aria-pressed
+      await user.click(brailleModeBtn);
+      expect(textModeBtn).toHaveAttribute('aria-pressed', 'false');
+      expect(brailleModeBtn).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('correctly exposes mobile tab selection and panel controls to screen readers (Requirement F)', async () => {
+      const user = userEvent.setup();
+      render(<Converter />);
+
+      const tablist = screen.getByRole('tablist', { name: 'Panel selection' });
+      expect(tablist).toBeInTheDocument();
+
+      const inputTab = screen.getByRole('tab', { name: 'Input' });
+      const outputTab = screen.getByRole('tab', { name: 'Output' });
+
+      expect(inputTab).toHaveAttribute('aria-selected', 'true');
+      expect(inputTab).toHaveAttribute('aria-controls', 'panel-input');
+      expect(outputTab).toHaveAttribute('aria-selected', 'false');
+      expect(outputTab).toHaveAttribute('aria-controls', 'panel-output');
+
+      await user.click(outputTab);
+      expect(inputTab).toHaveAttribute('aria-selected', 'false');
+      expect(outputTab).toHaveAttribute('aria-selected', 'true');
+    });
+  });
 });
