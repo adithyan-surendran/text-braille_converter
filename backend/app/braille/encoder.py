@@ -16,8 +16,8 @@ def encode(text: str) -> str:
     preserves spaces, prefixes number sequences with the Braille number sign,
     maps supported punctuation, and raises ValueError for unsupported characters.
     """
-    result = []
-    in_number_mode = False
+    result: list[str] = []
+    in_number_mode: bool = False
 
     for char in text:
         if char in DIGIT_TO_BRAILLE:

@@ -16,9 +16,9 @@ def decode(braille: str) -> str:
     Handles number mode initiated by the Braille number sign and
     capitalization initiated by the Braille capital indicator.
     """
-    result = []
-    in_number_mode = False
-    capitalize_next = False
+    result: list[str] = []
+    in_number_mode: bool = False
+    capitalize_next: bool = False
 
     for char in braille:
         if char == CAPITAL_SIGN:

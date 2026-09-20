@@ -1,22 +1,29 @@
+import Converter from './components/Converter.tsx';
+
 export default function App() {
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col justify-center items-center px-4 sm:px-6 lg:px-8">
-      <main className="max-w-xl w-full text-center space-y-6">
-        <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-slate-900">
-          Text-to-Braille Converter
-        </h1>
-        <p className="text-lg sm:text-xl text-slate-600 leading-relaxed">
-          An accessibility-focused tool for converting text into Braille.
-        </p>
-        <div>
-          <button
-            type="button"
-            className="inline-flex items-center justify-center px-6 py-3 rounded-lg bg-blue-600 text-white font-medium text-base hover:bg-blue-700 active:bg-blue-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 transition-colors shadow-sm cursor-pointer"
-          >
-            Get Started
-          </button>
-        </div>
-      </main>
+    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col justify-between px-3 py-6 sm:px-6 sm:py-8 lg:p-10 font-sans">
+      <div className="w-full max-w-5xl mx-auto space-y-6 sm:space-y-8">
+        {/* Header Section */}
+        <header className="text-center space-y-2 sm:space-y-3 pt-2 sm:pt-6">
+          <h1 className="text-2xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-slate-900">
+            Text-to-Braille Converter
+          </h1>
+          <p className="text-sm sm:text-base lg:text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed px-2">
+            Convert English text to Braille and Braille back to text.
+          </p>
+        </header>
+
+        {/* Main Application Area */}
+        <main>
+          <Converter />
+        </main>
+      </div>
+
+      {/* Footer Section */}
+      <footer className="text-center text-xs text-slate-400 py-6 px-2">
+        <p>Text-to-Braille Converter &bull; Grade 1 Unified English Braille</p>
+      </footer>
     </div>
-  )
+  );
 }
