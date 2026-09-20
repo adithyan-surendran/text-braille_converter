@@ -22,7 +22,7 @@ export default function ModeToggle({
         disabled={disabled}
         onClick={() => onModeChange('text-to-braille')}
         aria-pressed={mode === 'text-to-braille'}
-        className={`flex-1 sm:flex-initial text-center px-3 sm:px-5 py-2 text-xs sm:text-sm md:text-base font-semibold rounded-lg transition-all cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50 disabled:cursor-not-allowed ${
+        className={`flex-1 sm:flex-initial text-center px-3 sm:px-5 py-2 text-xs sm:text-sm md:text-base font-semibold rounded-lg transition-all cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed ${
           mode === 'text-to-braille'
             ? 'bg-white text-blue-700 shadow-sm'
             : 'text-slate-600 hover:text-slate-900'
@@ -36,7 +36,7 @@ export default function ModeToggle({
         disabled={disabled}
         onClick={() => onModeChange('braille-to-text')}
         aria-pressed={mode === 'braille-to-text'}
-        className={`flex-1 sm:flex-initial text-center px-3 sm:px-5 py-2 text-xs sm:text-sm md:text-base font-semibold rounded-lg transition-all cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-50 disabled:cursor-not-allowed ${
+        className={`flex-1 sm:flex-initial text-center px-3 sm:px-5 py-2 text-xs sm:text-sm md:text-base font-semibold rounded-lg transition-all cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed ${
           mode === 'braille-to-text'
             ? 'bg-white text-blue-700 shadow-sm'
             : 'text-slate-600 hover:text-slate-900'

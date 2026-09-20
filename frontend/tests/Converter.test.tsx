@@ -420,4 +420,163 @@ describe('Converter Component', () => {
     // Braille output should now have "⠠⠓⠑⠇⠇⠕"
     expect(screen.getByText('⠠⠓⠑⠇⠇⠕')).toBeInTheDocument();
   });
+
+  it('moves focus to the output area after successful conversion in both modes', async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.encodeText).mockResolvedValueOnce({
+      input: 'Braille Focus',
+      braille: '⠠⠃⠗⠁⠊⠇⠇⠑ ⠠⠋⠕⠉⠥⠎',
+    });
+
+    render(<Converter />);
+
+    const textarea = screen.getByLabelText(/english text/i);
+    const outputRegion = screen.getByRole('region', { name: /braille output/i });
+
+    // Output should not have focus initially
+    expect(outputRegion).not.toHaveFocus();
+
+    await user.type(textarea, 'Braille Focus');
+    const convertBtn = screen.getByRole('button', { name: /^convert$/i });
+    await user.click(convertBtn);
+
+    // After conversion succeeds, output area must receive focus
+    await waitFor(() => {
+      expect(outputRegion).toHaveFocus();
+    });
+
+    // Switch to Braille -> Text mode and test reverse conversion focus
+    vi.mocked(api.decodeBraille).mockResolvedValueOnce({
+      braille: '⠠⠃⠗⠁⠊⠇⠇⠑',
+      text: 'Braille',
+    });
+
+    const brailleModeBtn = screen.getByRole('button', { name: /braille → text/i });
+    await user.click(brailleModeBtn);
+
+    const brailleTextarea = screen.getByLabelText(/braille input/i);
+    fireEvent.change(brailleTextarea, { target: { value: '⠠⠃⠗⠁⠊⠇⠇⠑' } });
+
+    await user.click(screen.getByRole('button', { name: /^convert$/i }));
+
+    const textOutputRegion = screen.getByRole('region', { name: /text output/i });
+    await waitFor(() => {
+      expect(textOutputRegion).toHaveFocus();
+    });
+  });
+
+  it('keeps or moves focus to the input textarea when conversion fails with an error', async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.encodeText).mockRejectedValueOnce(
+      new Error('Text contains unsupported characters.')
+    );
+
+    render(<Converter />);
+
+    const textarea = screen.getByLabelText(/english text/i);
+    const outputRegion = screen.getByRole('region', { name: /braille output/i });
+
+    await user.type(textarea, 'invalid @ text');
+    const convertBtn = screen.getByRole('button', { name: /^convert$/i });
+    await user.click(convertBtn);
+
+    // On failure: error alert is shown, input textarea gets focus, output does NOT get focus
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+      expect(textarea).toHaveFocus();
+      expect(outputRegion).not.toHaveFocus();
+    });
+  });
+
+  it('allows operating interactive elements entirely with keyboard (Tab, Enter, Space)', async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.encodeText).mockResolvedValueOnce({
+      input: 'Key',
+      braille: '⠠⠅⠑⠽',
+    });
+
+    const writeTextMock = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: writeTextMock },
+      configurable: true,
+      writable: true,
+    });
+
+    render(<Converter />);
+
+    const textarea = screen.getByLabelText(/english text/i);
+    const convertBtn = screen.getByRole('button', { name: /^convert$/i });
+    const copyBtn = screen.getByRole('button', { name: /copy output to clipboard/i });
+    const clearBtn = screen.getByRole('button', { name: /clear/i });
+    const brailleModeBtn = screen.getByRole('button', { name: /braille → text/i });
+
+    // Focus mode toggle button and press Enter to toggle mode
+    brailleModeBtn.focus();
+    expect(brailleModeBtn).toHaveFocus();
+    await user.keyboard('{Enter}');
+    expect(brailleModeBtn).toHaveAttribute('aria-pressed', 'true');
+
+    // Switch back to Text -> Braille via Space key
+    const textModeBtn = screen.getByRole('button', { name: /text → braille/i });
+    textModeBtn.focus();
+    await user.keyboard(' ');
+    expect(textModeBtn).toHaveAttribute('aria-pressed', 'true');
+
+    // Focus textarea and type
+    textarea.focus();
+    expect(textarea).toHaveFocus();
+    await user.keyboard('Key');
+    expect(textarea).toHaveValue('Key');
+
+    // Tab / focus Convert and trigger via Enter
+    convertBtn.focus();
+    expect(convertBtn).toHaveFocus();
+    await user.keyboard('{Enter}');
+
+    // Output receives focus after conversion
+    const outputRegion = screen.getByRole('region', { name: /braille output/i });
+    await waitFor(() => {
+      expect(outputRegion).toHaveFocus();
+    });
+
+    // Focus Copy button and trigger via Space key
+    copyBtn.focus();
+    expect(copyBtn).toHaveFocus();
+    await user.keyboard(' ');
+    expect(writeTextMock).toHaveBeenCalledWith('⠠⠅⠑⠽');
+
+    // Focus Clear button and trigger via Enter key
+    clearBtn.focus();
+    expect(clearBtn).toHaveFocus();
+    await user.keyboard('{Enter}');
+    expect(textarea).toHaveValue('');
+  });
+
+  it('ensures all interactive elements have visible focus indicator classes', () => {
+    render(<Converter />);
+
+    // Mode toggle buttons
+    const textModeBtn = screen.getByRole('button', { name: /text → braille/i });
+    expect(textModeBtn.className).toMatch(/focus-visible:outline/);
+
+    // Mobile tabs
+    const inputTab = screen.getByRole('tab', { name: /^input$/i });
+    const outputTab = screen.getByRole('tab', { name: /^output$/i });
+    expect(inputTab.className).toMatch(/focus-visible:outline/);
+    expect(outputTab.className).toMatch(/focus-visible:outline/);
+
+    // Textarea and output region
+    const textarea = screen.getByLabelText(/english text/i);
+    expect(textarea.className).toMatch(/focus:ring/);
+    const outputRegion = screen.getByRole('region', { name: /braille output/i });
+    expect(outputRegion.className).toMatch(/focus:ring/);
+
+    // Action buttons
+    const convertBtn = screen.getByRole('button', { name: /^convert$/i });
+    expect(convertBtn.className).toMatch(/focus-visible:outline/);
+    const copyBtn = screen.getByRole('button', { name: /copy output to clipboard/i });
+    expect(copyBtn.className).toMatch(/focus-visible:outline/);
+    const clearBtn = screen.getByRole('button', { name: /clear/i });
+    expect(clearBtn.className).toMatch(/focus-visible:outline/);
+  });
 });

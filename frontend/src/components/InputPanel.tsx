@@ -6,6 +6,7 @@ interface InputPanelProps {
   onChange: (value: string) => void;
   disabled?: boolean;
   onSwitchToOutput?: () => void;
+  inputRef?: React.Ref<HTMLTextAreaElement>;
 }
 
 export default function InputPanel({
@@ -14,6 +15,7 @@ export default function InputPanel({
   onChange,
   disabled = false,
   onSwitchToOutput,
+  inputRef,
 }: InputPanelProps) {
   const isTextToBraille = mode === 'text-to-braille';
   const labelText = isTextToBraille ? 'English Text' : 'Braille Input';
@@ -35,7 +37,7 @@ export default function InputPanel({
             <button
               type="button"
               onClick={onSwitchToOutput}
-              className="md:hidden inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 px-2 py-0.5 rounded-md transition-colors cursor-pointer"
+              className="md:hidden inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 px-2 py-0.5 rounded-md transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500/20"
               aria-label="Switch to output box"
             >
               View Output →
@@ -51,6 +53,7 @@ export default function InputPanel({
       </div>
 
       <textarea
+        ref={inputRef}
         id="converter-input"
         name="converter-input"
         rows={6}
@@ -58,7 +61,7 @@ export default function InputPanel({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholderText}
-        className={`w-full min-h-[140px] sm:min-h-[180px] md:min-h-[200px] p-3 sm:p-4 bg-slate-50/50 border border-slate-300 rounded-xl resize-y text-slate-800 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none transition-all disabled:bg-slate-100 disabled:opacity-60 disabled:cursor-not-allowed ${
+        className={`w-full min-h-[140px] sm:min-h-[180px] md:min-h-[200px] p-3 sm:p-4 bg-slate-50/50 border border-slate-300 rounded-xl resize-y text-slate-800 focus:bg-white focus:border-blue-600 focus:ring-3 focus:ring-blue-500/25 focus:outline-none transition-all disabled:bg-slate-100 disabled:opacity-60 disabled:cursor-not-allowed ${
           !isTextToBraille
             ? 'text-xl sm:text-2xl md:text-3xl leading-relaxed tracking-wider'
             : 'text-sm sm:text-base leading-relaxed'

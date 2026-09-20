@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { decodeBraille, encodeText } from '../services/api.ts';
 import type { ConversionMode } from '../types/api.ts';
 import InputPanel from './InputPanel.tsx';
@@ -15,6 +15,9 @@ export default function Converter() {
   const [copyError, setCopyError] = useState<string | null>(null);
   const [mobileTab, setMobileTab] = useState<'input' | 'output'>('input');
 
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const outputRef = useRef<HTMLDivElement>(null);
+
   const handleConvert = async () => {
     setError(null);
     setCopied(false);
@@ -22,6 +25,7 @@ export default function Converter() {
     setMobileTab('output');
     setIsLoading(true);
 
+    let isSuccess = false;
     try {
       if (mode === 'text-to-braille') {
         const result = await encodeText(input);
@@ -30,6 +34,7 @@ export default function Converter() {
         const result = await decodeBraille(input);
         setOutput(result.text);
       }
+      isSuccess = true;
     } catch (err) {
       setMobileTab('input');
       if (err instanceof Error) {
@@ -39,6 +44,14 @@ export default function Converter() {
       }
     } finally {
       setIsLoading(false);
+    }
+
+    if (isSuccess) {
+      outputRef.current?.focus();
+    } else {
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 0);
     }
   };
 
@@ -106,7 +119,7 @@ export default function Converter() {
             type="button"
             onClick={() => setError(null)}
             aria-label="Dismiss error"
-            className="text-rose-500 hover:text-rose-700 font-bold px-2 py-0.5 rounded cursor-pointer min-w-[28px] min-h-[28px] flex items-center justify-center shrink-0"
+            className="text-rose-500 hover:text-rose-700 font-bold px-2 py-0.5 rounded cursor-pointer min-w-[28px] min-h-[28px] flex items-center justify-center shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-600 focus-visible:ring-2 focus-visible:ring-rose-400/30"
           >
             ×
           </button>
@@ -125,7 +138,7 @@ export default function Converter() {
             role="tab"
             aria-selected={mobileTab === 'input'}
             onClick={() => setMobileTab('input')}
-            className={`flex-1 text-center py-2 px-3 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer ${
+            className={`flex-1 text-center py-2 px-3 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500/20 ${
               mobileTab === 'input'
                 ? 'bg-white text-blue-700 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
@@ -138,7 +151,7 @@ export default function Converter() {
             role="tab"
             aria-selected={mobileTab === 'output'}
             onClick={() => setMobileTab('output')}
-            className={`flex-1 text-center py-2 px-3 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer ${
+            className={`flex-1 text-center py-2 px-3 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500/20 ${
               mobileTab === 'output'
                 ? 'bg-white text-blue-700 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
@@ -153,6 +166,7 @@ export default function Converter() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
         <div className={mobileTab === 'output' ? 'hidden md:block' : 'block'}>
           <InputPanel
+            inputRef={inputRef}
             mode={mode}
             value={input}
             onChange={(newVal) => {
@@ -166,6 +180,7 @@ export default function Converter() {
 
         <div className={mobileTab === 'input' ? 'hidden md:block' : 'block'}>
           <OutputPanel
+            outputRef={outputRef}
             mode={mode}
             value={output}
             onSwitchToInput={() => setMobileTab('input')}
@@ -180,7 +195,7 @@ export default function Converter() {
           onClick={handleConvert}
           disabled={isLoading}
           aria-busy={isLoading}
-          className="w-full sm:w-auto inline-flex items-center justify-center px-8 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold text-base shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:opacity-60 disabled:cursor-not-allowed transition-all cursor-pointer min-h-[44px]"
+          className="w-full sm:w-auto inline-flex items-center justify-center px-8 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold text-base shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 focus-visible:ring-2 focus-visible:ring-blue-400/40 disabled:opacity-60 disabled:cursor-not-allowed transition-all cursor-pointer min-h-[44px]"
         >
           {isLoading ? 'Converting...' : 'Convert'}
         </button>
@@ -193,8 +208,8 @@ export default function Converter() {
             aria-label={copied ? 'Output copied' : 'Copy output to clipboard'}
             className={`flex-1 sm:flex-initial inline-flex items-center justify-center px-6 py-3 rounded-xl font-medium text-base border shadow-2xs focus-visible:outline-2 focus-visible:outline-offset-2 transition-all cursor-pointer min-h-[44px] ${
               copied
-                ? 'bg-emerald-50 border-emerald-300 text-emerald-700 focus-visible:outline-emerald-500'
-                : 'bg-white hover:bg-slate-100 active:bg-slate-200 text-slate-700 border-slate-300 focus-visible:outline-slate-400 disabled:opacity-50 disabled:cursor-not-allowed'
+                ? 'bg-emerald-50 border-emerald-300 text-emerald-700 focus-visible:outline-emerald-600 focus-visible:ring-2 focus-visible:ring-emerald-400/30'
+                : 'bg-white hover:bg-slate-100 active:bg-slate-200 text-slate-700 border-slate-300 focus-visible:outline-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed'
             }`}
           >
             {copied ? 'Copied!' : copyError ? copyError : 'Copy'}
@@ -205,7 +220,7 @@ export default function Converter() {
             onClick={handleClear}
             disabled={isLoading}
             aria-label="Clear input and output"
-            className="flex-1 sm:flex-initial inline-flex items-center justify-center px-6 py-3 rounded-xl bg-white hover:bg-slate-100 active:bg-slate-200 text-slate-700 font-medium text-base border border-slate-300 shadow-2xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer min-h-[44px]"
+            className="flex-1 sm:flex-initial inline-flex items-center justify-center px-6 py-3 rounded-xl bg-white hover:bg-slate-100 active:bg-slate-200 text-slate-700 font-medium text-base border border-slate-300 shadow-2xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-600 focus-visible:ring-2 focus-visible:ring-slate-400/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer min-h-[44px]"
           >
             Clear
           </button>
