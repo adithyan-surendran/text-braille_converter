@@ -1313,4 +1313,130 @@ describe('Converter Component', () => {
       });
     });
   });
+
+  describe('V4.2 File Content Validation & Text Normalization', () => {
+    it('normalizes Windows CRLF (\\r\\n) line endings to consistent Unix LF (\\n)', async () => {
+      const user = userEvent.setup();
+      render(<Converter />);
+
+      const windowsContent = 'Hello\r\nBraille\r\nWorld';
+      const file = new File([windowsContent], 'windows.txt', { type: 'text/plain' });
+
+      const fileInput = screen.getByLabelText(/upload \.txt file/i);
+      await user.upload(fileInput, file);
+
+      const textarea = screen.getByLabelText(/english text/i);
+      expect(textarea).toHaveValue('Hello\nBraille\nWorld');
+
+      // 3 lines · 19 characters (instead of 21 with \r\n)
+      expect(screen.getByText('3 lines · 19 characters')).toBeInTheDocument();
+      expect(screen.getByTestId('uploaded-file-name')).toHaveTextContent('windows.txt');
+    });
+
+    it('handles standard Unix LF (\\n) line endings cleanly without alteration', async () => {
+      const user = userEvent.setup();
+      render(<Converter />);
+
+      const unixContent = 'Line 1\nLine 2';
+      const file = new File([unixContent], 'unix.txt', { type: 'text/plain' });
+
+      const fileInput = screen.getByLabelText(/upload \.txt file/i);
+      await user.upload(fileInput, file);
+
+      const textarea = screen.getByLabelText(/english text/i);
+      expect(textarea).toHaveValue('Line 1\nLine 2');
+      expect(screen.getByText('2 lines · 13 characters')).toBeInTheDocument();
+    });
+
+    it('handles legacy Mac CR (\\r) line endings by normalizing to LF (\\n)', async () => {
+      const user = userEvent.setup();
+      render(<Converter />);
+
+      const macContent = 'Old\rMac\rLines';
+      const file = new File([macContent], 'mac.txt', { type: 'text/plain' });
+
+      const fileInput = screen.getByLabelText(/upload \.txt file/i);
+      await user.upload(fileInput, file);
+
+      const textarea = screen.getByLabelText(/english text/i);
+      expect(textarea).toHaveValue('Old\nMac\nLines');
+      expect(screen.getByText('3 lines · 13 characters')).toBeInTheDocument();
+    });
+
+    it('rejects an empty file gracefully with an accessible error alert and clears the file badge', async () => {
+      const user = userEvent.setup();
+      render(<Converter />);
+
+      const emptyFile = new File([''], 'empty.txt', { type: 'text/plain' });
+
+      const fileInput = screen.getByLabelText(/upload \.txt file/i);
+      await user.upload(fileInput, emptyFile);
+
+      // Error alert displayed
+      const alert = screen.getByRole('alert');
+      expect(alert).toHaveTextContent('The selected file is empty and contains no text.');
+
+      // File badge is cleared
+      expect(screen.queryByTestId('uploaded-file-name')).not.toBeInTheDocument();
+
+      // Textarea remains empty and receives focus
+      const textarea = screen.getByLabelText(/english text/i);
+      expect(textarea).toHaveValue('');
+      expect(textarea).toHaveFocus();
+    });
+
+    it('rejects a file containing only whitespace gracefully with an accessible error alert and clears the file badge', async () => {
+      const user = userEvent.setup();
+      render(<Converter />);
+
+      const whitespaceFile = new File(['   \n\t  \r\n   '], 'whitespace.txt', {
+        type: 'text/plain',
+      });
+
+      const fileInput = screen.getByLabelText(/upload \.txt file/i);
+      await user.upload(fileInput, whitespaceFile);
+
+      // Error alert displayed
+      const alert = screen.getByRole('alert');
+      expect(alert).toHaveTextContent(
+        'The selected file contains only whitespace and has no usable text.'
+      );
+
+      // File badge is cleared
+      expect(screen.queryByTestId('uploaded-file-name')).not.toBeInTheDocument();
+
+      // Textarea remains empty and receives focus
+      const textarea = screen.getByLabelText(/english text/i);
+      expect(textarea).toHaveValue('');
+      expect(textarea).toHaveFocus();
+    });
+
+    it('preserves meaningful spaces, indentation, and blank lines inside valid multiline documents', async () => {
+      const user = userEvent.setup();
+      render(<Converter />);
+
+      const multilineDocument = 'Paragraph 1\n\n  Indented paragraph 2\n\nFinal line';
+      const file = new File([multilineDocument], 'document.txt', { type: 'text/plain' });
+
+      const fileInput = screen.getByLabelText(/upload \.txt file/i);
+      await user.upload(fileInput, file);
+
+      const textarea = screen.getByLabelText(/english text/i);
+      expect(textarea).toHaveValue(multilineDocument);
+      expect(screen.getByTestId('uploaded-file-name')).toHaveTextContent('document.txt');
+      expect(screen.getByText('5 lines · 47 characters')).toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('updates character and line count dynamically when manually typing multiline text', async () => {
+      const user = userEvent.setup();
+      render(<Converter />);
+
+      const textarea = screen.getByLabelText(/english text/i);
+      await user.type(textarea, 'Line one{enter}Line two');
+
+      expect(textarea).toHaveValue('Line one\nLine two');
+      expect(screen.getByText('2 lines · 17 characters')).toBeInTheDocument();
+    });
+  });
 });

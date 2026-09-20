@@ -60,6 +60,7 @@ export default function OutputPanel({
       : internalSizeIndex;
 
   const currentSize = BRAILLE_SIZES[sizeIndex] || BRAILLE_SIZES[DEFAULT_BRAILLE_SIZE_INDEX];
+  const lineCount = value ? value.split('\n').length : 0;
 
   const updateSizeIndex = (newIndex: number) => {
     setInternalSizeIndex(newIndex);
@@ -141,6 +142,7 @@ export default function OutputPanel({
             aria-live="polite"
             className="text-xs font-medium text-slate-400 shrink-0"
           >
+            {lineCount > 1 ? `${lineCount} lines · ` : ''}
             {value.length} {value.length === 1 ? 'character' : 'characters'}
           </span>
         </div>

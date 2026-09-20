@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { MAX_FILE_SIZE_BYTES } from '../types/api.ts';
 import type { ConversionMode } from '../types/api.ts';
+import { normalizeLineEndings } from '../utils/text.ts';
 
 interface InputPanelProps {
   mode: ConversionMode;
@@ -50,6 +51,8 @@ export default function InputPanel({
   const currentFileName =
     uploadedFileName !== undefined ? uploadedFileName : internalFileName;
 
+  const lineCount = value ? value.split('\n').length : 0;
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -81,7 +84,29 @@ export default function InputPanel({
     }
 
     try {
-      const content = await readFileContent(file);
+      const rawContent = await readFileContent(file);
+      const content = normalizeLineEndings(rawContent);
+
+      // Validate usable text content (empty or whitespace-only)
+      if (content.length === 0) {
+        const errorMsg = 'The selected file is empty and contains no text.';
+        setInternalFileName(null);
+        if (onError) {
+          onError(errorMsg);
+        }
+        return;
+      }
+
+      if (content.trim().length === 0) {
+        const errorMsg =
+          'The selected file contains only whitespace and has no usable text.';
+        setInternalFileName(null);
+        if (onError) {
+          onError(errorMsg);
+        }
+        return;
+      }
+
       setInternalFileName(file.name);
       onChange(content);
       onFileUpload?.(file.name, content);
@@ -127,6 +152,7 @@ export default function InputPanel({
           aria-live="polite"
           className="text-xs font-medium text-slate-400 shrink-0"
         >
+          {lineCount > 1 ? `${lineCount} lines · ` : ''}
           {value.length} {value.length === 1 ? 'character' : 'characters'}
         </span>
       </div>
