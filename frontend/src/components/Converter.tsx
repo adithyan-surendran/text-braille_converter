@@ -20,6 +20,8 @@ export default function Converter() {
   const outputRef = useRef<HTMLDivElement>(null);
 
   const handleConvert = async () => {
+    if (isLoading) return;
+
     setError(null);
     setCopied(false);
     setCopyError(null);
@@ -40,7 +42,7 @@ export default function Converter() {
       setStatusMessage('Conversion complete.');
     } catch (err) {
       setMobileTab('input');
-      setStatusMessage('Conversion failed.');
+      setStatusMessage('');
       if (err instanceof Error) {
         setError(err.message);
       } else {
@@ -57,6 +59,12 @@ export default function Converter() {
         inputRef.current?.focus();
       }, 0);
     }
+  };
+
+  const handleDismissError = () => {
+    setError(null);
+    setStatusMessage('');
+    inputRef.current?.focus();
   };
 
   const handleCopy = async () => {
@@ -134,7 +142,7 @@ export default function Converter() {
           </div>
           <button
             type="button"
-            onClick={() => setError(null)}
+            onClick={handleDismissError}
             aria-label="Dismiss error"
             className="text-rose-500 hover:text-rose-700 font-bold px-2 py-0.5 rounded cursor-pointer min-w-[28px] min-h-[28px] flex items-center justify-center shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-600 focus-visible:ring-2 focus-visible:ring-rose-400/30"
           >
@@ -192,7 +200,10 @@ export default function Converter() {
             value={input}
             onChange={(newVal) => {
               setInput(newVal);
-              if (error) setError(null);
+              if (error) {
+                setError(null);
+                setStatusMessage('');
+              }
             }}
             disabled={isLoading}
             onSwitchToOutput={() => setMobileTab('output')}

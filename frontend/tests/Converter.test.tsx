@@ -634,7 +634,7 @@ describe('Converter Component', () => {
       });
     });
 
-    it('announces "Conversion failed." and displays error with role="alert" on failure, returning focus to input (Requirement C)', async () => {
+    it('announces error with role="alert" on failure without duplicate status announcement, returning focus to input (Requirement C)', async () => {
       const user = userEvent.setup();
       vi.mocked(api.encodeText).mockRejectedValueOnce(
         new Error('Text contains unsupported characters.')
@@ -649,11 +649,12 @@ describe('Converter Component', () => {
       await user.click(convertBtn);
 
       await waitFor(() => {
-        expect(screen.getByRole('status')).toHaveTextContent('Conversion failed.');
         const alert = screen.getByRole('alert');
         expect(alert).toHaveAttribute('aria-atomic', 'true');
         expect(alert).toHaveTextContent('Text contains unsupported characters.');
         expect(textarea).toHaveFocus();
+        // role="status" is cleared on error so assistive tech receives single announcement via role="alert"
+        expect(screen.getByRole('status')).toHaveTextContent('');
       });
     });
 
@@ -714,6 +715,195 @@ describe('Converter Component', () => {
       await user.click(outputTab);
       expect(inputTab).toHaveAttribute('aria-selected', 'false');
       expect(outputTab).toHaveAttribute('aria-selected', 'true');
+    });
+  });
+
+  describe('V3.3 Refined Feedback and Duplicate Announcement Prevention', () => {
+    it('enters loading state, disables controls, and prevents duplicate conversion calls when activated repeatedly (Requirement A & 1)', async () => {
+      const user = userEvent.setup();
+      let resolvePromise: (val: EncodeResponse) => void;
+      const pendingPromise = new Promise<EncodeResponse>((resolve) => {
+        resolvePromise = resolve;
+      });
+      vi.mocked(api.encodeText).mockReturnValue(pendingPromise);
+
+      render(<Converter />);
+
+      const textarea = screen.getByLabelText(/english text/i);
+      await user.type(textarea, 'Hello World');
+
+      const convertBtn = screen.getByRole('button', { name: /^convert$/i });
+      await user.click(convertBtn);
+
+      // Verify loading state
+      expect(convertBtn).toHaveTextContent('Converting...');
+      expect(convertBtn).toBeDisabled();
+      expect(convertBtn).toHaveAttribute('aria-busy', 'true');
+      expect(screen.getByRole('status')).toHaveTextContent('Converting...');
+      expect(api.encodeText).toHaveBeenCalledTimes(1);
+
+      // Attempt repeated activations while loading
+      await user.click(convertBtn);
+      fireEvent.click(convertBtn);
+      expect(api.encodeText).toHaveBeenCalledTimes(1);
+
+      // Complete conversion
+      resolvePromise!({ input: 'Hello World', braille: '⠠⠓⠑⠇⠇⠕ ⠠⠺⠕⠗⠇⠙' });
+      await waitFor(() => {
+        expect(convertBtn).not.toBeDisabled();
+        expect(convertBtn).toHaveTextContent('Convert');
+        expect(convertBtn).toHaveAttribute('aria-busy', 'false');
+        expect(screen.getByRole('status')).toHaveTextContent('Conversion complete.');
+      });
+    });
+
+    it('clears loading state and re-enables controls after conversion failure (Requirement A)', async () => {
+      const user = userEvent.setup();
+      let rejectPromise: (err: Error) => void;
+      const pendingPromise = new Promise<EncodeResponse>((_, reject) => {
+        rejectPromise = reject;
+      });
+      vi.mocked(api.encodeText).mockReturnValueOnce(pendingPromise);
+
+      render(<Converter />);
+
+      const textarea = screen.getByLabelText(/english text/i);
+      await user.type(textarea, 'bad @ text');
+
+      const convertBtn = screen.getByRole('button', { name: /^convert$/i });
+      await user.click(convertBtn);
+
+      expect(convertBtn).toBeDisabled();
+      expect(convertBtn).toHaveAttribute('aria-busy', 'true');
+
+      // Fail conversion
+      rejectPromise!(new Error('Text contains unsupported characters.'));
+      await waitFor(() => {
+        expect(convertBtn).not.toBeDisabled();
+        expect(convertBtn).toHaveTextContent('Convert');
+        expect(convertBtn).toHaveAttribute('aria-busy', 'false');
+        expect(screen.getByRole('alert')).toBeInTheDocument();
+        expect(textarea).toHaveFocus();
+      });
+    });
+
+    it('announces "Conversion complete." once, updates output, and moves focus to output without live region on output (Requirement B)', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.encodeText).mockResolvedValueOnce({
+        input: 'Test Text',
+        braille: '⠠⠞⠑⠎⠞ ⠠⠞⠑⠭⠞',
+      });
+
+      render(<Converter />);
+
+      const textarea = screen.getByLabelText(/english text/i);
+      await user.type(textarea, 'Test Text');
+
+      const convertBtn = screen.getByRole('button', { name: /^convert$/i });
+      await user.click(convertBtn);
+
+      await waitFor(() => {
+        const statusRegion = screen.getByRole('status');
+        expect(statusRegion).toHaveTextContent('Conversion complete.');
+        const outputRegion = screen.getByRole('region', { name: 'Braille output' });
+        expect(outputRegion).toHaveFocus();
+        expect(outputRegion).not.toHaveAttribute('aria-live');
+        expect(screen.getByText('⠠⠞⠑⠎⠞ ⠠⠞⠑⠭⠞')).toBeInTheDocument();
+      });
+    });
+
+    it('displays error in role="alert", returns focus to input, and safely refocuses input when dismissed via keyboard (Requirement C & 5)', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.encodeText).mockRejectedValueOnce(
+        new Error('Text contains unsupported characters.')
+      );
+
+      render(<Converter />);
+
+      const textarea = screen.getByLabelText(/english text/i);
+      await user.type(textarea, 'invalid @');
+
+      const convertBtn = screen.getByRole('button', { name: /^convert$/i });
+      await user.click(convertBtn);
+
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toBeInTheDocument();
+        expect(textarea).toHaveFocus();
+      });
+
+      // Focus dismiss button with keyboard
+      const dismissBtn = screen.getByRole('button', { name: /dismiss error/i });
+      dismissBtn.focus();
+      expect(dismissBtn).toHaveFocus();
+
+      // Dismiss error with keyboard
+      await user.keyboard('{Enter}');
+
+      // Verify error is removed, status is cleared, and focus returns to input textarea
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(screen.getByRole('status')).toHaveTextContent('');
+      expect(textarea).toHaveFocus();
+    });
+
+    it('ensures zero competing live announcements across loading, success, and error states (Requirement D & 7)', async () => {
+      const user = userEvent.setup();
+      let resolvePromise: (val: EncodeResponse) => void;
+      const pendingPromise = new Promise<EncodeResponse>((resolve) => {
+        resolvePromise = resolve;
+      });
+      vi.mocked(api.encodeText).mockReturnValueOnce(pendingPromise);
+
+      render(<Converter />);
+
+      const textarea = screen.getByLabelText(/english text/i);
+      await user.type(textarea, 'Check Live Regions');
+
+      const convertBtn = screen.getByRole('button', { name: /^convert$/i });
+      await user.click(convertBtn);
+
+      // During loading: exactly one status live region has text, no alerts
+      const liveStatus = screen.getByRole('status');
+      expect(liveStatus).toHaveTextContent('Converting...');
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+      // During success: status announces completion, output region is non-live
+      resolvePromise!({ input: 'Check Live Regions', braille: '⠠⠉⠓⠑⠉⠅' });
+      await waitFor(() => {
+        expect(liveStatus).toHaveTextContent('Conversion complete.');
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+        const outputRegion = screen.getByRole('region', { name: 'Braille output' });
+        expect(outputRegion).not.toHaveAttribute('aria-live');
+      });
+
+      // During error: alert is present, role="status" is empty
+      vi.mocked(api.encodeText).mockRejectedValueOnce(new Error('Invalid character'));
+      await user.click(convertBtn);
+
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toHaveTextContent('Invalid character');
+        expect(liveStatus).toHaveTextContent(''); // No duplicate "Conversion failed." announcement
+      });
+    });
+
+    it('handles empty input conversion cleanly, returning empty output and indicating completion (Requirement 6)', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.encodeText).mockResolvedValueOnce({
+        input: '',
+        braille: '',
+      });
+
+      render(<Converter />);
+
+      const convertBtn = screen.getByRole('button', { name: /^convert$/i });
+      await user.click(convertBtn);
+
+      await waitFor(() => {
+        expect(api.encodeText).toHaveBeenCalledWith('');
+        expect(screen.getByRole('status')).toHaveTextContent('Conversion complete.');
+        const outputRegion = screen.getByRole('region', { name: 'Braille output' });
+        expect(outputRegion).toHaveFocus();
+        expect(screen.getByText('Conversion output will appear here...')).toBeInTheDocument();
+      });
     });
   });
 });
