@@ -1,7 +1,7 @@
 """Braille and text character mappings."""
 
 # Standard Unicode Braille mappings for lowercase English alphabet (Grade 1 Braille)
-TEXT_TO_BRAILLE = {
+TEXT_TO_BRAILLE: dict[str, str] = {
     "a": "⠁",
     "b": "⠃",
     "c": "⠉",
@@ -31,13 +31,13 @@ TEXT_TO_BRAILLE = {
 }
 
 # Reverse mapping for decoding Braille back to text
-BRAILLE_TO_TEXT = {braille: char for char, braille in TEXT_TO_BRAILLE.items()}
+BRAILLE_TO_TEXT: dict[str, str] = {braille: char for char, braille in TEXT_TO_BRAILLE.items()}
 
 # Standard Braille number indicator (dots 3-4-5-6)
-NUMBER_SIGN = "⠼"
+NUMBER_SIGN: str = "⠼"
 
 # Standard Braille representation for digits (uses letters a-j following number sign)
-DIGIT_TO_BRAILLE = {
+DIGIT_TO_BRAILLE: dict[str, str] = {
     "1": "⠁",
     "2": "⠃",
     "3": "⠉",
@@ -51,10 +51,10 @@ DIGIT_TO_BRAILLE = {
 }
 
 # Reverse mapping for decoding Braille digits in number mode
-BRAILLE_TO_DIGIT = {braille: digit for digit, braille in DIGIT_TO_BRAILLE.items()}
+BRAILLE_TO_DIGIT: dict[str, str] = {braille: digit for digit, braille in DIGIT_TO_BRAILLE.items()}
 
 # Standard Unicode English Braille representations for basic punctuation
-PUNCTUATION_TO_BRAILLE = {
+PUNCTUATION_TO_BRAILLE: dict[str, str] = {
     ".": "⠲",
     ",": "⠂",
     "?": "⠦",
@@ -65,9 +65,9 @@ PUNCTUATION_TO_BRAILLE = {
 }
 
 # Reverse mapping for decoding Braille punctuation back to text
-BRAILLE_TO_PUNCTUATION = {
+BRAILLE_TO_PUNCTUATION: dict[str, str] = {
     braille: punct for punct, braille in PUNCTUATION_TO_BRAILLE.items()
 }
 
 # Standard Braille capital indicator (dot 6)
-CAPITAL_SIGN = "⠠"
+CAPITAL_SIGN: str = "⠠"
