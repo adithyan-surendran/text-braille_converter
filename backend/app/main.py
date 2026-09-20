@@ -43,7 +43,7 @@ def encode_text(payload: EncodeRequest) -> EncodeResponse:
     if not validate_text(payload.text):
         raise HTTPException(
             status_code=400,
-            detail="Text contains unsupported characters. Only English letters and spaces are supported.",
+            detail="Text contains unsupported characters. Only English letters, numbers, punctuation, and spaces are supported.",
         )
     braille_output = encode(payload.text)
     return EncodeResponse(input=payload.text, braille=braille_output)
@@ -54,7 +54,7 @@ def decode_braille(payload: DecodeRequest) -> DecodeResponse:
     if not validate_braille(payload.braille):
         raise HTTPException(
             status_code=400,
-            detail="Braille contains unsupported symbols. Only standard alphabet Braille symbols and spaces are supported.",
+            detail="Braille contains unsupported symbols. Only standard alphabet Braille symbols, numbers, punctuation, and spaces are supported.",
         )
     text_output = decode(payload.braille)
     return DecodeResponse(braille=payload.braille, text=text_output)
