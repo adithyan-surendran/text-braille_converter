@@ -1129,4 +1129,188 @@ describe('Converter Component', () => {
       expect(screen.getByRole('status')).toHaveTextContent('Failed to copy to clipboard.');
     });
   });
+
+  describe('V4.1 Text File Upload Support', () => {
+    it('uploads a valid .txt file, populates the input textarea, shows filename, and announces status', async () => {
+      const user = userEvent.setup();
+      render(<Converter />);
+
+      const fileContent = 'Hello world from uploaded file';
+      const file = new File([fileContent], 'sample.txt', { type: 'text/plain' });
+
+      const fileInput = screen.getByLabelText(/upload \.txt file/i);
+      expect(fileInput).toBeInTheDocument();
+      expect(fileInput).toHaveAttribute('accept', '.txt');
+
+      await user.upload(fileInput, file);
+
+      // Verify text in textarea
+      const textarea = screen.getByLabelText(/english text/i);
+      expect(textarea).toHaveValue(fileContent);
+
+      // Verify filename badge
+      expect(screen.getByTestId('uploaded-file-name')).toHaveTextContent('sample.txt');
+
+      // Verify status announcement
+      expect(screen.getByRole('status')).toHaveTextContent('File "sample.txt" loaded successfully.');
+    });
+
+    it('converts uploaded .txt file content seamlessly with existing Convert button and focus management', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.encodeText).mockResolvedValueOnce({
+        input: 'Uploaded text',
+        braille: '⠠⠥⠏⠇⠕⠁⠙⠑⠙ ⠞⠑⠭⠞',
+      });
+
+      render(<Converter />);
+
+      const file = new File(['Uploaded text'], 'test-doc.txt', { type: 'text/plain' });
+      const fileInput = screen.getByLabelText(/upload \.txt file/i);
+      await user.upload(fileInput, file);
+
+      const convertBtn = screen.getByRole('button', { name: /^convert$/i });
+      await user.click(convertBtn);
+
+      await waitFor(() => {
+        expect(api.encodeText).toHaveBeenCalledWith('Uploaded text');
+        expect(screen.getByRole('status')).toHaveTextContent('Conversion complete.');
+        expect(screen.getByText('⠠⠥⠏⠇⠕⠁⠙⠑⠙ ⠞⠑⠭⠞')).toBeInTheDocument();
+        const outputRegion = screen.getByRole('region', { name: 'Braille output' });
+        expect(outputRegion).toHaveFocus();
+      });
+    });
+
+    it('rejects files that do not have .txt extension and displays accessible error alert', async () => {
+      render(<Converter />);
+
+      const invalidFile = new File(['%PDF-1.4 sample'], 'document.pdf', {
+        type: 'application/pdf',
+      });
+
+      const fileInput = screen.getByLabelText(/upload \.txt file/i);
+      fireEvent.change(fileInput, { target: { files: [invalidFile] } });
+
+      // Error alert displayed
+      const alert = screen.getByRole('alert');
+      expect(alert).toHaveTextContent('Invalid file type. Please upload a .txt file.');
+
+      // Filename badge not displayed
+      expect(screen.queryByTestId('uploaded-file-name')).not.toBeInTheDocument();
+
+      // Textarea retains empty / previous value
+      const textarea = screen.getByLabelText(/english text/i);
+      expect(textarea).toHaveValue('');
+    });
+
+    it('rejects files exceeding the 100 KB size limit and displays accessible error alert', async () => {
+      const user = userEvent.setup();
+      render(<Converter />);
+
+      // Create content larger than 100 KB (100 * 1024 bytes)
+      const oversizedContent = 'a'.repeat(101 * 1024);
+      const oversizedFile = new File([oversizedContent], 'huge.txt', { type: 'text/plain' });
+
+      const fileInput = screen.getByLabelText(/upload \.txt file/i);
+      await user.upload(fileInput, oversizedFile);
+
+      // Error alert displayed
+      const alert = screen.getByRole('alert');
+      expect(alert).toHaveTextContent(
+        'File size exceeds the 100 KB limit. Please choose a smaller .txt file.'
+      );
+
+      // Filename badge not displayed
+      expect(screen.queryByTestId('uploaded-file-name')).not.toBeInTheDocument();
+      expect(screen.getByLabelText(/english text/i)).toHaveValue('');
+    });
+
+    it('removes uploaded file badge without unexpectedly wiping manual edits in the textarea', async () => {
+      const user = userEvent.setup();
+      render(<Converter />);
+
+      const file = new File(['Initial file content'], 'notes.txt', { type: 'text/plain' });
+      const fileInput = screen.getByLabelText(/upload \.txt file/i);
+      await user.upload(fileInput, file);
+
+      const textarea = screen.getByLabelText(/english text/i);
+      expect(textarea).toHaveValue('Initial file content');
+      expect(screen.getByTestId('uploaded-file-name')).toHaveTextContent('notes.txt');
+
+      // User adds extra manual notes
+      await user.type(textarea, ' - updated notes');
+      expect(textarea).toHaveValue('Initial file content - updated notes');
+
+      // Click remove file button
+      const removeFileBtn = screen.getByRole('button', { name: /remove uploaded file/i });
+      await user.click(removeFileBtn);
+
+      // Filename badge is removed
+      expect(screen.queryByTestId('uploaded-file-name')).not.toBeInTheDocument();
+
+      // Textarea content is preserved!
+      expect(textarea).toHaveValue('Initial file content - updated notes');
+      expect(screen.getByRole('status')).toHaveTextContent('File removed.');
+    });
+
+    it('resets uploaded file badge when main Clear button is activated', async () => {
+      const user = userEvent.setup();
+      render(<Converter />);
+
+      const file = new File(['Text to clear'], 'to-clear.txt', { type: 'text/plain' });
+      const fileInput = screen.getByLabelText(/upload \.txt file/i);
+      await user.upload(fileInput, file);
+
+      expect(screen.getByTestId('uploaded-file-name')).toHaveTextContent('to-clear.txt');
+      expect(screen.getByLabelText(/english text/i)).toHaveValue('Text to clear');
+
+      const clearBtn = screen.getByRole('button', { name: /clear/i });
+      await user.click(clearBtn);
+
+      expect(screen.queryByTestId('uploaded-file-name')).not.toBeInTheDocument();
+      expect(screen.getByLabelText(/english text/i)).toHaveValue('');
+    });
+
+    it('ensures upload control and remove button are keyboard accessible with visible focus indicators', async () => {
+      const user = userEvent.setup();
+      render(<Converter />);
+
+      const fileInput = screen.getByLabelText(/upload \.txt file/i);
+      expect(fileInput.className).toContain('focus-visible:outline');
+
+      // Upload file
+      const file = new File(['Keyboard test'], 'keys.txt', { type: 'text/plain' });
+      await user.upload(fileInput, file);
+
+      const removeBtn = screen.getByRole('button', { name: /remove uploaded file/i });
+      expect(removeBtn.className).toContain('focus-visible:outline');
+
+      removeBtn.focus();
+      expect(removeBtn).toHaveFocus();
+
+      // Activate with keyboard
+      await user.keyboard('{Enter}');
+      expect(screen.queryByTestId('uploaded-file-name')).not.toBeInTheDocument();
+    });
+
+    it('preserves existing manual typing and conversion behavior without file upload', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.encodeText).mockResolvedValueOnce({
+        input: 'Manual typing',
+        braille: '⠠⠍⠁⠝⠥⠁⠇',
+      });
+
+      render(<Converter />);
+
+      const textarea = screen.getByLabelText(/english text/i);
+      await user.type(textarea, 'Manual typing');
+
+      const convertBtn = screen.getByRole('button', { name: /^convert$/i });
+      await user.click(convertBtn);
+
+      await waitFor(() => {
+        expect(api.encodeText).toHaveBeenCalledWith('Manual typing');
+        expect(screen.getByText('⠠⠍⠁⠝⠥⠁⠇')).toBeInTheDocument();
+      });
+    });
+  });
 });

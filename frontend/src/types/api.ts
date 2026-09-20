@@ -1,6 +1,8 @@
 export type ConversionMode = 'text-to-braille' | 'braille-to-text';
 export type BrailleSize = 'small' | 'medium' | 'large' | 'extra-large';
 
+export const MAX_FILE_SIZE_BYTES = 100 * 1024; // 100 KB
+
 export type EncodeRequest = {
   text: string;
 };

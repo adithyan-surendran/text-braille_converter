@@ -15,6 +15,7 @@ export default function Converter() {
   const [copyError, setCopyError] = useState<string | null>(null);
   const [mobileTab, setMobileTab] = useState<'input' | 'output'>('input');
   const [statusMessage, setStatusMessage] = useState<string>('');
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const outputRef = useRef<HTMLDivElement>(null);
@@ -99,6 +100,7 @@ export default function Converter() {
     setError(null);
     setCopied(false);
     setCopyError(null);
+    setUploadedFileName(null);
     setStatusMessage('');
     setMobileTab('input');
   };
@@ -109,8 +111,30 @@ export default function Converter() {
     setError(null);
     setCopied(false);
     setCopyError(null);
+    setUploadedFileName(null);
     setStatusMessage('');
     setMobileTab('input');
+  };
+
+  const handleFileUploadSuccess = (fileName: string, content: string) => {
+    setInput(content);
+    setUploadedFileName(fileName);
+    setError(null);
+    setStatusMessage(`File "${fileName}" loaded successfully.`);
+  };
+
+  const handleFileUploadError = (errorMessage: string) => {
+    setError(errorMessage);
+    setStatusMessage('');
+    setUploadedFileName(null);
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 0);
+  };
+
+  const handleFileRemove = () => {
+    setUploadedFileName(null);
+    setStatusMessage('File removed.');
   };
 
   return (
@@ -215,6 +239,10 @@ export default function Converter() {
             }}
             disabled={isLoading}
             onSwitchToOutput={() => setMobileTab('output')}
+            uploadedFileName={uploadedFileName}
+            onFileUpload={handleFileUploadSuccess}
+            onFileRemove={handleFileRemove}
+            onError={handleFileUploadError}
           />
         </div>
 
