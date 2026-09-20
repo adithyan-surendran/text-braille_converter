@@ -32,3 +32,39 @@ TEXT_TO_BRAILLE = {
 
 # Reverse mapping for decoding Braille back to text
 BRAILLE_TO_TEXT = {braille: char for char, braille in TEXT_TO_BRAILLE.items()}
+
+# Standard Braille number indicator (dots 3-4-5-6)
+NUMBER_SIGN = "⠼"
+
+# Standard Braille representation for digits (uses letters a-j following number sign)
+DIGIT_TO_BRAILLE = {
+    "1": "⠁",
+    "2": "⠃",
+    "3": "⠉",
+    "4": "⠙",
+    "5": "⠑",
+    "6": "⠋",
+    "7": "⠛",
+    "8": "⠓",
+    "9": "⠊",
+    "0": "⠚",
+}
+
+# Reverse mapping for decoding Braille digits in number mode
+BRAILLE_TO_DIGIT = {braille: digit for digit, braille in DIGIT_TO_BRAILLE.items()}
+
+# Standard Unicode English Braille representations for basic punctuation
+PUNCTUATION_TO_BRAILLE = {
+    ".": "⠲",
+    ",": "⠂",
+    "?": "⠦",
+    "!": "⠖",
+    "'": "⠄",
+    "-": "⠤",
+    ":": "⠒",
+}
+
+# Reverse mapping for decoding Braille punctuation back to text
+BRAILLE_TO_PUNCTUATION = {
+    braille: punct for punct, braille in PUNCTUATION_TO_BRAILLE.items()
+}
