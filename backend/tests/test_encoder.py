@@ -15,8 +15,8 @@ def test_encode_words():
 
 
 def test_encode_uppercase():
-    assert encode("HELLO") == "⠓⠑⠇⠇⠕"
-    assert encode("AbC") == "⠁⠃⠉"
+    assert encode("HELLO") == "⠠⠓⠠⠑⠠⠇⠠⠇⠠⠕"
+    assert encode("AbC") == "⠠⠁⠃⠠⠉"
 
 
 def test_encode_with_spaces():
@@ -69,5 +69,34 @@ def test_encode_punctuation():
 
 def test_encode_mixed_text():
     assert encode("hello, world!") == "⠓⠑⠇⠇⠕⠂ ⠺⠕⠗⠇⠙⠖"
-    assert encode("I have 123 books.") == "⠊ ⠓⠁⠧⠑ ⠼⠁⠃⠉ ⠃⠕⠕⠅⠎⠲"
+    assert encode("I have 123 books.") == "⠠⠊ ⠓⠁⠧⠑ ⠼⠁⠃⠉ ⠃⠕⠕⠅⠎⠲"
     assert encode("2026") == "⠼⠃⠚⠃⠋"
+
+
+def test_encode_individual_uppercase_letters():
+    assert encode("A") == "⠠⠁"
+    assert encode("B") == "⠠⠃"
+    assert encode("Z") == "⠠⠵"
+
+
+def test_encode_capitalized_words():
+    assert encode("Hello") == "⠠⠓⠑⠇⠇⠕"
+    assert encode("World") == "⠠⠺⠕⠗⠇⠙"
+    assert encode("Adithyan") == "⠠⠁⠙⠊⠞⠓⠽⠁⠝"
+
+
+def test_encode_mixed_case():
+    assert encode("Hello World") == "⠠⠓⠑⠇⠇⠕ ⠠⠺⠕⠗⠇⠙"
+    assert encode("Python") == "⠠⠏⠽⠞⠓⠕⠝"
+    assert encode("Text-to-Braille") == "⠠⠞⠑⠭⠞⠤⠞⠕⠤⠠⠃⠗⠁⠊⠇⠇⠑"
+
+
+def test_encode_numbers_with_capitals():
+    assert encode("Year 2026") == "⠠⠽⠑⠁⠗ ⠼⠃⠚⠃⠋"
+    assert encode("ABC 123") == "⠠⠁⠠⠃⠠⠉ ⠼⠁⠃⠉"
+
+
+def test_encode_punctuation_with_capitals():
+    assert encode("Hello!") == "⠠⠓⠑⠇⠇⠕⠖"
+    assert encode("What?") == "⠠⠺⠓⠁⠞⠦"
+    assert encode("Hello, World!") == "⠠⠓⠑⠇⠇⠕⠂ ⠠⠺⠕⠗⠇⠙⠖"

@@ -3,6 +3,7 @@
 from app.braille.mappings import (
     BRAILLE_TO_PUNCTUATION,
     BRAILLE_TO_TEXT,
+    CAPITAL_SIGN,
     DIGIT_TO_BRAILLE,
     NUMBER_SIGN,
     PUNCTUATION_TO_BRAILLE,
@@ -27,6 +28,7 @@ def validate_braille(braille: str) -> bool:
         char == " "
         or char in BRAILLE_TO_TEXT
         or char == NUMBER_SIGN
+        or char == CAPITAL_SIGN
         or char in BRAILLE_TO_PUNCTUATION
         for char in braille
     )

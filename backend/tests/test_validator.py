@@ -21,6 +21,7 @@ def test_validate_braille_valid():
     assert validate_braille("⠓⠑⠇⠇⠕ ⠺⠕⠗⠇⠙") is True
     assert validate_braille("⠼⠁⠃⠉") is True
     assert validate_braille("⠓⠑⠇⠇⠕ ⠼⠁⠃⠉") is True
+    assert validate_braille("⠠⠓⠑⠇⠇⠕") is True
 
 
 def test_validate_braille_invalid():
@@ -51,3 +52,10 @@ def test_validate_braille_numbers_and_punctuation():
     assert validate_braille("⠼⠁⠃⠉⠙⠑") is True
     assert validate_braille("⠲⠂⠦⠖⠄⠤⠒") is True
     assert validate_braille("⠓⠑⠇⠇⠕⠂ ⠺⠕⠗⠇⠙⠖") is True
+
+
+def test_validate_braille_capitals():
+    assert validate_braille("⠠") is True
+    assert validate_braille("⠠⠁") is True
+    assert validate_braille("⠠⠓⠑⠇⠇⠕ ⠠⠺⠕⠗⠇⠙⠖") is True
+    assert validate_braille("⠠⠽⠑⠁⠗ ⠼⠃⠚⠃⠋") is True

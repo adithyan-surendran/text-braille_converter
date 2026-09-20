@@ -1,6 +1,7 @@
 """Text to Braille encoder."""
 
 from app.braille.mappings import (
+    CAPITAL_SIGN,
     DIGIT_TO_BRAILLE,
     NUMBER_SIGN,
     PUNCTUATION_TO_BRAILLE,
@@ -11,8 +12,8 @@ from app.braille.mappings import (
 def encode(text: str) -> str:
     """Encode English text to Braille.
 
-    Converts uppercase characters to lowercase, preserves spaces,
-    prefixes number sequences with the Braille number sign,
+    Preserves uppercase characters using the Braille capital indicator,
+    preserves spaces, prefixes number sequences with the Braille number sign,
     maps supported punctuation, and raises ValueError for unsupported characters.
     """
     result = []
@@ -30,11 +31,12 @@ def encode(text: str) -> str:
                 result.append(" ")
             elif char in PUNCTUATION_TO_BRAILLE:
                 result.append(PUNCTUATION_TO_BRAILLE[char])
+            elif char.isupper() and char.lower() in TEXT_TO_BRAILLE:
+                result.append(CAPITAL_SIGN)
+                result.append(TEXT_TO_BRAILLE[char.lower()])
+            elif char in TEXT_TO_BRAILLE:
+                result.append(TEXT_TO_BRAILLE[char])
             else:
-                lower_char = char.lower()
-                if lower_char in TEXT_TO_BRAILLE:
-                    result.append(TEXT_TO_BRAILLE[lower_char])
-                else:
-                    raise ValueError(f"Unsupported character: '{char}'")
+                raise ValueError(f"Unsupported character: '{char}'")
 
     return "".join(result)

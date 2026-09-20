@@ -68,3 +68,6 @@ PUNCTUATION_TO_BRAILLE = {
 BRAILLE_TO_PUNCTUATION = {
     braille: punct for punct, braille in PUNCTUATION_TO_BRAILLE.items()
 }
+
+# Standard Braille capital indicator (dot 6)
+CAPITAL_SIGN = "⠠"
