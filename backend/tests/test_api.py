@@ -116,6 +116,15 @@ def test_api_decode_invalid_braille():
     assert exc_info.value.status_code == 400
 
 
+def test_api_encode_and_decode_multiline():
+    text = "Line 1: Hello\nLine 2: 123!\n\nLine 4"
+    enc_res = encode_text(EncodeRequest(text=text))
+    assert enc_res.input == text
+    assert "\n" in enc_res.braille
+    dec_res = decode_braille(DecodeRequest(braille=enc_res.braille))
+    assert dec_res.text == text
+
+
 # --- V1.3 HTTP API Contract Tests ---
 
 

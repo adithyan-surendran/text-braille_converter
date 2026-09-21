@@ -59,3 +59,11 @@ def test_validate_braille_capitals():
     assert validate_braille("⠠⠁") is True
     assert validate_braille("⠠⠓⠑⠇⠇⠕ ⠠⠺⠕⠗⠇⠙⠖") is True
     assert validate_braille("⠠⠽⠑⠁⠗ ⠼⠃⠚⠃⠋") is True
+
+
+def test_validate_newlines_accepted():
+    assert validate_text("hello\nworld") is True
+    assert validate_text("line 1\r\nline 2".replace("\r", "")) is True
+    assert validate_text("multiple\n\nblank\nlines\n") is True
+    assert validate_braille("⠠⠓⠑⠇⠇⠕\n⠠⠺⠕⠗⠇⠙") is True
+    assert validate_braille("⠁\n\n⠃\n") is True

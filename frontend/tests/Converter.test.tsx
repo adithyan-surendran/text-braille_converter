@@ -1439,4 +1439,351 @@ describe('Converter Component', () => {
       expect(screen.getByText('2 lines · 17 characters')).toBeInTheDocument();
     });
   });
+
+  describe('V4.3 Output Download Functionality', () => {
+    it('disables the download button when output is empty and prevents downloads', async () => {
+      const user = userEvent.setup();
+      const createObjectURLMock = vi.fn();
+      window.URL.createObjectURL = createObjectURLMock;
+
+      render(<Converter />);
+
+      const downloadBtn = screen.getByRole('button', { name: /download/i });
+      expect(downloadBtn).toBeInTheDocument();
+      expect(downloadBtn).toBeDisabled();
+      expect(screen.queryByTestId('output-filename')).not.toBeInTheDocument();
+
+      // Attempting to click does nothing
+      await user.click(downloadBtn);
+      expect(createObjectURLMock).not.toHaveBeenCalled();
+    });
+
+    it('enables the download button and displays filename badge when output exists', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.encodeText).mockResolvedValueOnce({
+        input: 'Hello',
+        braille: '⠠⠓⠑⠇⠇⠕',
+      });
+
+      render(<Converter />);
+
+      const textarea = screen.getByLabelText(/english text/i);
+      await user.type(textarea, 'Hello');
+      await user.click(screen.getByRole('button', { name: /^convert$/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText('⠠⠓⠑⠇⠇⠕')).toBeInTheDocument();
+      });
+
+      const downloadBtn = screen.getByRole('button', { name: /download/i });
+      expect(downloadBtn).toBeVisible();
+      expect(downloadBtn).not.toBeDisabled();
+      expect(screen.getByTestId('output-filename')).toHaveTextContent('braille-output.txt');
+    });
+
+    it('downloads converted Braille output with sensible filename "braille-output.txt" and correct content', async () => {
+      const user = userEvent.setup();
+      const mockUrl = 'blob:http://localhost/test-braille-blob';
+      const createObjectURLMock = vi.fn().mockReturnValue(mockUrl);
+      const revokeObjectURLMock = vi.fn();
+      window.URL.createObjectURL = createObjectURLMock;
+      window.URL.revokeObjectURL = revokeObjectURLMock;
+
+      const clickMock = vi.fn();
+      vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(clickMock);
+      const appendSpy = vi.spyOn(document.body, 'appendChild');
+      const removeSpy = vi.spyOn(document.body, 'removeChild');
+
+      vi.mocked(api.encodeText).mockResolvedValueOnce({
+        input: 'Hello 123!',
+        braille: '⠠⠓⠑⠇⠇⠕ ⠼⠁⠃⠉⠖',
+      });
+
+      render(<Converter />);
+
+      const textarea = screen.getByLabelText(/english text/i);
+      await user.type(textarea, 'Hello 123!');
+      await user.click(screen.getByRole('button', { name: /^convert$/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText('⠠⠓⠑⠇⠇⠕ ⠼⠁⠃⠉⠖')).toBeInTheDocument();
+      });
+
+      const downloadBtn = screen.getByRole('button', { name: /download braille output/i });
+      await user.click(downloadBtn);
+
+      // Verify Blob and URL creation
+      expect(createObjectURLMock).toHaveBeenCalledTimes(1);
+      const blobArg = createObjectURLMock.mock.calls[0][0] as Blob;
+      expect(blobArg.type).toBe('text/plain;charset=utf-8');
+      expect(await blobArg.text()).toBe('⠠⠓⠑⠇⠇⠕ ⠼⠁⠃⠉⠖');
+
+      // Verify anchor configuration
+      const anchor = appendSpy.mock.calls.find(
+        (call) => call[0] instanceof HTMLAnchorElement
+      )?.[0] as HTMLAnchorElement;
+      expect(anchor).toBeDefined();
+      expect(anchor.download).toBe('braille-output.txt');
+      expect(anchor.href).toBe(mockUrl);
+
+      // Verify click, cleanup, and URL revocation
+      expect(clickMock).toHaveBeenCalledTimes(1);
+      expect(removeSpy).toHaveBeenCalledWith(anchor);
+      expect(revokeObjectURLMock).toHaveBeenCalledWith(mockUrl);
+    });
+
+    it('downloads converted English text output with sensible filename "text-output.txt" and correct content', async () => {
+      const user = userEvent.setup();
+      const mockUrl = 'blob:http://localhost/test-text-blob';
+      const createObjectURLMock = vi.fn().mockReturnValue(mockUrl);
+      const revokeObjectURLMock = vi.fn();
+      window.URL.createObjectURL = createObjectURLMock;
+      window.URL.revokeObjectURL = revokeObjectURLMock;
+
+      const clickMock = vi.fn();
+      vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(clickMock);
+      const appendSpy = vi.spyOn(document.body, 'appendChild');
+      const removeSpy = vi.spyOn(document.body, 'removeChild');
+
+      vi.mocked(api.decodeBraille).mockResolvedValueOnce({
+        braille: '⠠⠓⠑⠇⠇⠕',
+        text: 'Hello',
+      });
+
+      render(<Converter />);
+
+      // Switch to Braille -> Text mode
+      await user.click(screen.getByRole('button', { name: /braille → text/i }));
+
+      const textarea = screen.getByLabelText(/braille input/i);
+      fireEvent.change(textarea, { target: { value: '⠠⠓⠑⠇⠇⠕' } });
+      await user.click(screen.getByRole('button', { name: /^convert$/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText('Hello')).toBeInTheDocument();
+      });
+
+      const downloadBtn = screen.getByRole('button', { name: /download text output/i });
+      expect(screen.getByTestId('output-filename')).toHaveTextContent('text-output.txt');
+      await user.click(downloadBtn);
+
+      expect(createObjectURLMock).toHaveBeenCalledTimes(1);
+      const blobArg = createObjectURLMock.mock.calls[0][0] as Blob;
+      expect(blobArg.type).toBe('text/plain;charset=utf-8');
+      expect(await blobArg.text()).toBe('Hello');
+
+      const anchor = appendSpy.mock.calls.find(
+        (call) => call[0] instanceof HTMLAnchorElement
+      )?.[0] as HTMLAnchorElement;
+      expect(anchor).toBeDefined();
+      expect(anchor.download).toBe('text-output.txt');
+      expect(anchor.href).toBe(mockUrl);
+
+      expect(clickMock).toHaveBeenCalledTimes(1);
+      expect(removeSpy).toHaveBeenCalledWith(anchor);
+      expect(revokeObjectURLMock).toHaveBeenCalledWith(mockUrl);
+    });
+
+    it('provides clear visual feedback ("Downloaded!") and announces "Download started." politely with zero competing alerts', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.encodeText).mockResolvedValueOnce({
+        input: 'Hello',
+        braille: '⠠⠓⠑⠇⠇⠕',
+      });
+
+      render(<Converter />);
+
+      const textarea = screen.getByLabelText(/english text/i);
+      await user.type(textarea, 'Hello');
+      await user.click(screen.getByRole('button', { name: /^convert$/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText('⠠⠓⠑⠇⠇⠕')).toBeInTheDocument();
+      });
+
+      const downloadBtn = screen.getByRole('button', { name: /download braille output/i });
+      expect(downloadBtn).toHaveTextContent('Download');
+
+      await user.click(downloadBtn);
+
+      // Visual feedback changes
+      expect(downloadBtn).toHaveTextContent('Downloaded!');
+      expect(downloadBtn.className).toContain('text-emerald-700');
+
+      // Status announced politely without competing alerts
+      const statusRegion = screen.getByRole('status');
+      expect(statusRegion).toHaveTextContent('Download started.');
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('displays accessible error alert and clears polite status when download operation fails', async () => {
+      const user = userEvent.setup();
+      window.URL.createObjectURL = vi.fn().mockImplementation(() => {
+        throw new Error('Browser out of memory or Blob creation failed.');
+      });
+
+      vi.mocked(api.encodeText).mockResolvedValueOnce({
+        input: 'Hello',
+        braille: '⠠⠓⠑⠇⠇⠕',
+      });
+
+      render(<Converter />);
+
+      const textarea = screen.getByLabelText(/english text/i);
+      await user.type(textarea, 'Hello');
+      await user.click(screen.getByRole('button', { name: /^convert$/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText('⠠⠓⠑⠇⠇⠕')).toBeInTheDocument();
+      });
+
+      const downloadBtn = screen.getByRole('button', { name: /download braille output/i });
+      await user.click(downloadBtn);
+
+      // Accessible error banner displayed
+      const alert = screen.getByRole('alert');
+      expect(alert).toHaveTextContent('Browser out of memory or Blob creation failed.');
+
+      // Polite status cleared to prevent duplicate / competing announcements
+      expect(screen.getByRole('status')).toHaveTextContent('');
+
+      // Button is not stuck in downloaded state
+      expect(downloadBtn).toHaveTextContent('Download');
+    });
+
+    it('supports keyboard navigation, focus indicators, and activation via Enter key', async () => {
+      const user = userEvent.setup();
+      const mockUrl = 'blob:http://localhost/test-kbd-blob';
+      window.URL.createObjectURL = vi.fn().mockReturnValue(mockUrl);
+      window.URL.revokeObjectURL = vi.fn();
+      vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+      vi.mocked(api.encodeText).mockResolvedValueOnce({
+        input: 'Keyboard test',
+        braille: '⠠⠅⠑⠽⠃⠕⠁⠗⠙',
+      });
+
+      render(<Converter />);
+
+      const textarea = screen.getByLabelText(/english text/i);
+      await user.type(textarea, 'Keyboard test');
+      await user.click(screen.getByRole('button', { name: /^convert$/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText('⠠⠅⠑⠽⠃⠕⠁⠗⠙')).toBeInTheDocument();
+      });
+
+      const downloadBtn = screen.getByRole('button', { name: /download braille output/i });
+      downloadBtn.focus();
+      expect(downloadBtn).toHaveFocus();
+      expect(downloadBtn.className).toContain('focus-visible:outline-blue-600');
+
+      // Trigger via Enter key
+      await user.keyboard('{Enter}');
+
+      expect(window.URL.createObjectURL).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole('status')).toHaveTextContent('Download started.');
+    });
+
+    it('downloads exact multiline content preserving blank lines, indentation, and special characters', async () => {
+      const user = userEvent.setup();
+      const mockUrl = 'blob:http://localhost/multiline-blob';
+      const createObjectURLMock = vi.fn().mockReturnValue(mockUrl);
+      window.URL.createObjectURL = createObjectURLMock;
+      window.URL.revokeObjectURL = vi.fn();
+      vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+      const multilineBraille = '⠠⠇⠊⠝⠑ ⠼⠁\n\n  ⠠⠊⠝⠙⠑⠝⠞⠑⠙ ⠇⠊⠝⠑ ⠼⠃';
+      vi.mocked(api.encodeText).mockResolvedValueOnce({
+        input: 'Line 1\n\n  Indented line 2',
+        braille: multilineBraille,
+      });
+
+      render(<Converter />);
+
+      const textarea = screen.getByLabelText(/english text/i);
+      fireEvent.change(textarea, { target: { value: 'Line 1\n\n  Indented line 2' } });
+      await user.click(screen.getByRole('button', { name: /^convert$/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('region', { name: 'Braille output' })).toHaveTextContent(
+          '⠠⠇⠊⠝⠑ ⠼⠁'
+        );
+      });
+
+      const downloadBtn = screen.getByRole('button', { name: /download braille output/i });
+      await user.click(downloadBtn);
+
+      expect(createObjectURLMock).toHaveBeenCalledTimes(1);
+      const blobArg = createObjectURLMock.mock.calls[0][0] as Blob;
+      expect(await blobArg.text()).toBe(multilineBraille);
+    });
+
+    it('preserves existing copy to clipboard and clear button functionality alongside download', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.encodeText).mockResolvedValueOnce({
+        input: 'Keep existing',
+        braille: '⠠⠅⠑⠑⠏',
+      });
+
+      // Mock navigator.clipboard
+      const writeTextMock = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, 'clipboard', {
+        value: {
+          writeText: writeTextMock,
+        },
+        writable: true,
+        configurable: true,
+      });
+
+      render(<Converter />);
+
+      const textarea = screen.getByLabelText(/english text/i);
+      await user.type(textarea, 'Keep existing');
+      await user.click(screen.getByRole('button', { name: /^convert$/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText('⠠⠅⠑⠑⠏')).toBeInTheDocument();
+      });
+
+      // Copy works
+      const copyBtn = screen.getByRole('button', { name: /copy/i });
+      await user.click(copyBtn);
+      expect(writeTextMock).toHaveBeenCalledWith('⠠⠅⠑⠑⠏');
+      expect(screen.getByRole('status')).toHaveTextContent('Copied to clipboard.');
+
+      // Clear works and disables both copy and download
+      const clearBtn = screen.getByRole('button', { name: /clear/i });
+      await user.click(clearBtn);
+
+      expect(screen.getByRole('button', { name: /copy/i })).toBeDisabled();
+      expect(screen.getByRole('button', { name: /download/i })).toBeDisabled();
+      expect(textarea).toHaveValue('');
+    });
+
+    it('disables download button during conversion loading state', async () => {
+      const user = userEvent.setup();
+      let resolvePromise: (val: EncodeResponse) => void;
+      const pendingPromise = new Promise<EncodeResponse>((resolve) => {
+        resolvePromise = resolve;
+      });
+      vi.mocked(api.encodeText).mockReturnValueOnce(pendingPromise);
+
+      render(<Converter />);
+
+      const textarea = screen.getByLabelText(/english text/i);
+      await user.type(textarea, 'Testing Loading');
+      await user.click(screen.getByRole('button', { name: /^convert$/i }));
+
+      // While converting
+      const downloadBtn = screen.getByRole('button', { name: /download/i });
+      expect(downloadBtn).toBeDisabled();
+
+      // Complete conversion
+      resolvePromise!({ input: 'Testing Loading', braille: '⠠⠞⠑⠎⠞' });
+      await waitFor(() => {
+        expect(downloadBtn).not.toBeDisabled();
+      });
+    });
+  });
 });

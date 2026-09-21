@@ -128,8 +128,8 @@ export default function InputPanel({
   };
 
   return (
-    <div className="flex flex-col bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200">
-      <div className="flex items-center justify-between gap-2 mb-2">
+    <div className="flex flex-col h-full bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200">
+      <div className="flex items-center justify-between gap-2 mb-2 min-h-[32px]">
         <div className="flex items-center gap-2">
           <label
             htmlFor="converter-input"
@@ -208,11 +208,7 @@ export default function InputPanel({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholderText}
-        className={`w-full min-h-[140px] sm:min-h-[180px] md:min-h-[200px] p-3 sm:p-4 bg-slate-50/50 border border-slate-300 rounded-xl resize-y text-slate-800 focus:bg-white focus:border-blue-600 focus:ring-3 focus:ring-blue-500/25 focus:outline-none transition-all disabled:bg-slate-100 disabled:opacity-60 disabled:cursor-not-allowed ${
-          !isTextToBraille
-            ? 'text-xl sm:text-2xl md:text-3xl leading-relaxed tracking-wider'
-            : 'text-sm sm:text-base leading-relaxed'
-        }`}
+        className="w-full flex-1 min-h-[160px] sm:min-h-[200px] md:min-h-[240px] p-3 sm:p-4 bg-slate-50/50 border border-slate-300 rounded-xl resize-y text-slate-800 text-sm sm:text-base leading-relaxed focus:bg-white focus:border-blue-600 focus:ring-3 focus:ring-blue-500/25 focus:outline-none transition-all disabled:bg-slate-100 disabled:opacity-60 disabled:cursor-not-allowed"
       />
     </div>
   );

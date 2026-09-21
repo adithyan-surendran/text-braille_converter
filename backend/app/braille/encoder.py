@@ -27,8 +27,8 @@ def encode(text: str) -> str:
             result.append(DIGIT_TO_BRAILLE[char])
         else:
             in_number_mode = False
-            if char == " ":
-                result.append(" ")
+            if char in (" ", "\n"):
+                result.append(char)
             elif char in PUNCTUATION_TO_BRAILLE:
                 result.append(PUNCTUATION_TO_BRAILLE[char])
             elif char.isupper() and char.lower() in TEXT_TO_BRAILLE:

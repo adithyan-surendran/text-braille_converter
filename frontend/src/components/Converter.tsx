@@ -137,6 +137,19 @@ export default function Converter() {
     setStatusMessage('File removed.');
   };
 
+  const handleDownloadSuccess = () => {
+    setError(null);
+    setStatusMessage('Download started.');
+    setTimeout(() => {
+      setStatusMessage('');
+    }, 2000);
+  };
+
+  const handleDownloadError = (errorMessage: string) => {
+    setError(errorMessage);
+    setStatusMessage('');
+  };
+
   return (
     <div className="w-full max-w-5xl mx-auto space-y-4 sm:space-y-6">
       {/* Screen Reader Status Announcements */}
@@ -224,8 +237,11 @@ export default function Converter() {
       </div>
 
       {/* Dual Panel Grid (Input & Output) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-        <div id="panel-input" className={mobileTab === 'output' ? 'hidden md:block' : 'block'}>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 items-stretch">
+        <div
+          id="panel-input"
+          className={`h-full flex flex-col ${mobileTab === 'output' ? 'hidden md:flex' : 'flex'}`}
+        >
           <InputPanel
             inputRef={inputRef}
             mode={mode}
@@ -246,12 +262,18 @@ export default function Converter() {
           />
         </div>
 
-        <div id="panel-output" className={mobileTab === 'input' ? 'hidden md:block' : 'block'}>
+        <div
+          id="panel-output"
+          className={`h-full flex flex-col ${mobileTab === 'input' ? 'hidden md:flex' : 'flex'}`}
+        >
           <OutputPanel
             outputRef={outputRef}
             mode={mode}
             value={output}
+            disabled={isLoading}
             onSwitchToInput={() => setMobileTab('input')}
+            onDownloadSuccess={handleDownloadSuccess}
+            onError={handleDownloadError}
           />
         </div>
       </div>

@@ -12,9 +12,9 @@ from app.braille.mappings import (
 
 
 def validate_text(text: str) -> bool:
-    """Check if all characters in text are supported English letters, digits, punctuation, or spaces."""
+    """Check if all characters in text are supported English letters, digits, punctuation, spaces, or newlines."""
     return all(
-        char == " "
+        char in (" ", "\n")
         or char.lower() in TEXT_TO_BRAILLE
         or char in DIGIT_TO_BRAILLE
         or char in PUNCTUATION_TO_BRAILLE
@@ -23,9 +23,9 @@ def validate_text(text: str) -> bool:
 
 
 def validate_braille(braille: str) -> bool:
-    """Check if all characters in braille are supported Braille symbols or spaces."""
+    """Check if all characters in braille are supported Braille symbols, spaces, or newlines."""
     return all(
-        char == " "
+        char in (" ", "\n")
         or char in BRAILLE_TO_TEXT
         or char == NUMBER_SIGN
         or char == CAPITAL_SIGN

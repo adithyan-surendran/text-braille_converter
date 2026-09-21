@@ -27,10 +27,10 @@ def decode(braille: str) -> str:
         elif char == NUMBER_SIGN:
             in_number_mode = True
             capitalize_next = False
-        elif char == " ":
+        elif char in (" ", "\n"):
             in_number_mode = False
             capitalize_next = False
-            result.append(" ")
+            result.append(char)
         elif in_number_mode:
             if char in BRAILLE_TO_DIGIT:
                 result.append(BRAILLE_TO_DIGIT[char])

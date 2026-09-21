@@ -100,3 +100,10 @@ def test_encode_punctuation_with_capitals():
     assert encode("Hello!") == "⠠⠓⠑⠇⠇⠕⠖"
     assert encode("What?") == "⠠⠺⠓⠁⠞⠦"
     assert encode("Hello, World!") == "⠠⠓⠑⠇⠇⠕⠂ ⠠⠺⠕⠗⠇⠙⠖"
+
+
+def test_encode_with_newlines():
+    assert encode("hello\nworld") == "⠓⠑⠇⠇⠕\n⠺⠕⠗⠇⠙"
+    assert encode("Hello\nWorld\n") == "⠠⠓⠑⠇⠇⠕\n⠠⠺⠕⠗⠇⠙\n"
+    assert encode("123\n456") == "⠼⠁⠃⠉\n⠼⠙⠑⠋"
+    assert encode("Line 1\n\nLine 2") == "⠠⠇⠊⠝⠑ ⠼⠁\n\n⠠⠇⠊⠝⠑ ⠼⠃"

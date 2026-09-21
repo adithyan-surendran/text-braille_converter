@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { BrailleSize, ConversionMode } from '../types/api.ts';
+import { downloadTextFile, getDownloadFilename } from '../utils/download.ts';
 
 interface BrailleSizeConfig {
   id: BrailleSize;
@@ -39,6 +40,9 @@ interface OutputPanelProps {
   outputRef?: React.Ref<HTMLDivElement>;
   brailleSize?: BrailleSize;
   onBrailleSizeChange?: (size: BrailleSize) => void;
+  disabled?: boolean;
+  onDownloadSuccess?: () => void;
+  onError?: (error: string) => void;
 }
 
 export default function OutputPanel({
@@ -48,11 +52,56 @@ export default function OutputPanel({
   outputRef,
   brailleSize: propBrailleSize,
   onBrailleSizeChange,
+  disabled = false,
+  onDownloadSuccess,
+  onError,
 }: OutputPanelProps) {
   const isTextToBraille = mode === 'text-to-braille';
   const labelText = isTextToBraille ? 'Braille output' : 'Text output';
 
   const [internalSizeIndex, setInternalSizeIndex] = useState<number>(DEFAULT_BRAILLE_SIZE_INDEX);
+  const [downloaded, setDownloaded] = useState<boolean>(false);
+  const downloadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const filename = getDownloadFilename(mode);
+
+  const [prevTracked, setPrevTracked] = useState({ value, mode });
+  if (prevTracked.value !== value || prevTracked.mode !== mode) {
+    setPrevTracked({ value, mode });
+    setDownloaded(false);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (downloadTimeoutRef.current) {
+        clearTimeout(downloadTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleDownload = () => {
+    if (!value || disabled) return;
+
+    try {
+      downloadTextFile(value, filename);
+      setDownloaded(true);
+      onDownloadSuccess?.();
+
+      if (downloadTimeoutRef.current) {
+        clearTimeout(downloadTimeoutRef.current);
+      }
+      downloadTimeoutRef.current = setTimeout(() => {
+        setDownloaded(false);
+      }, 2000);
+    } catch (err) {
+      setDownloaded(false);
+      const errorMsg =
+        err instanceof Error && err.message
+          ? err.message
+          : 'Failed to download output. Please try again.';
+      onError?.(errorMsg);
+    }
+  };
 
   const sizeIndex =
     propBrailleSize !== undefined
@@ -84,8 +133,8 @@ export default function OutputPanel({
   };
 
   return (
-    <div className="flex flex-col bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200">
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+    <div className="flex flex-col h-full bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-200">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-2 min-h-[32px]">
         <div className="flex items-center gap-2">
           <span className="text-xs sm:text-sm font-semibold text-slate-700 tracking-wide">
             {labelText}
@@ -148,13 +197,64 @@ export default function OutputPanel({
         </div>
       </div>
 
+      {/* Output Action Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3 pb-2 border-b border-slate-100 min-h-[33px]">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleDownload}
+            disabled={!value || disabled}
+            aria-label={`Download ${isTextToBraille ? 'Braille' : 'text'} output`}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border shadow-2xs transition-all cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500/20 disabled:opacity-40 disabled:cursor-not-allowed ${
+              downloaded
+                ? 'bg-emerald-50 border-emerald-300 text-emerald-700 focus-visible:outline-emerald-600 focus-visible:ring-emerald-400/30'
+                : 'bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 border-slate-300'
+            }`}
+          >
+            <svg
+              className="w-3.5 h-3.5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              {downloaded ? (
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 13l4 4L19 7"
+                />
+              ) : (
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                />
+              )}
+            </svg>
+            <span>{downloaded ? 'Downloaded!' : 'Download'}</span>
+          </button>
+        </div>
+
+        {value ? (
+          <span
+            data-testid="output-filename"
+            className="text-xs text-slate-400 font-mono hidden sm:inline"
+          >
+            📄 {filename}
+          </span>
+        ) : null}
+      </div>
+
       <div
         ref={outputRef}
         tabIndex={0}
         role="region"
         aria-label={labelText}
         data-braille-size={isTextToBraille ? currentSize.id : undefined}
-        className={`w-full min-h-[140px] sm:min-h-[180px] md:min-h-[200px] p-3 sm:p-4 bg-slate-50/70 border border-slate-200 rounded-xl overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-words select-text focus:bg-white focus:border-blue-600 focus:ring-3 focus:ring-blue-500/25 focus:outline-none transition-all ${
+        className={`w-full flex-1 min-h-[160px] sm:min-h-[200px] md:min-h-[240px] p-3 sm:p-4 bg-slate-50/70 border border-slate-200 rounded-xl overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-words select-text focus:bg-white focus:border-blue-600 focus:ring-3 focus:ring-blue-500/25 focus:outline-none transition-all ${
           isTextToBraille
             ? `${currentSize.className} text-slate-900 font-mono`
             : 'text-sm sm:text-base leading-relaxed text-slate-900'

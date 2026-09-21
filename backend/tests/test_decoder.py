@@ -120,3 +120,12 @@ def test_round_trip_capitalized():
     assert decode(encode("Hello 123!")) == "Hello 123!"
     assert decode(encode("Text-to-Braille")) == "Text-to-Braille"
     assert decode(encode("Adithyan")) == "Adithyan"
+
+
+def test_decode_with_newlines():
+    assert decode("⠓⠑⠇⠇⠕\n⠺⠕⠗⠇⠙") == "hello\nworld"
+    assert decode("⠠⠓⠑⠇⠇⠕\n⠠⠺⠕⠗⠇⠙\n") == "Hello\nWorld\n"
+    assert decode("⠼⠁⠃⠉\n⠼⠙⠑⠋") == "123\n456"
+    assert decode("⠠⠇⠊⠝⠑ ⠼⠁\n\n⠠⠇⠊⠝⠑ ⠼⠃") == "Line 1\n\nLine 2"
+    multiline_text = "First paragraph.\n\nSecond line 123!\nFinal line."
+    assert decode(encode(multiline_text)) == multiline_text
