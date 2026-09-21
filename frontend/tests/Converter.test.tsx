@@ -1786,4 +1786,292 @@ describe('Converter Component', () => {
       });
     });
   });
+
+  describe('V4.4 Accessible Drag-and-Drop File Upload', () => {
+    it('activates visual drag-over state on dragenter and removes it on dragleave', () => {
+      render(<Converter />);
+
+      const dropzone = screen.getByTestId('file-dropzone');
+      expect(dropzone).toHaveAttribute('data-dragging', 'false');
+      expect(dropzone.className).not.toContain('border-dashed');
+
+      // Drag enter activates visual cues (non-color: dashed border, icon, text prompt)
+      fireEvent.dragEnter(dropzone, {
+        dataTransfer: { items: [{ kind: 'file', type: 'text/plain' }] },
+      });
+      expect(dropzone).toHaveAttribute('data-dragging', 'true');
+      expect(dropzone.className).toContain('border-dashed');
+      expect(screen.getByText(/drop \.txt file to upload/i)).toBeInTheDocument();
+
+      // Drag leave resets to default state smoothly
+      fireEvent.dragLeave(dropzone);
+      expect(dropzone).toHaveAttribute('data-dragging', 'false');
+      expect(dropzone.className).not.toContain('border-dashed');
+      expect(screen.queryByText(/drop \.txt file to upload/i)).not.toBeInTheDocument();
+    });
+
+    it('loads a valid dropped .txt file and updates input, filename badge, and live announcement', async () => {
+      render(<Converter />);
+
+      const dropzone = screen.getByTestId('file-dropzone');
+      const file = new File(['Hello from dropped file!'], 'dropped.txt', {
+        type: 'text/plain',
+      });
+
+      fireEvent.drop(dropzone, {
+        dataTransfer: {
+          files: [file],
+        },
+      });
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/english text/i)).toHaveValue(
+          'Hello from dropped file!'
+        );
+      });
+
+      expect(screen.getByTestId('uploaded-file-name')).toHaveTextContent('dropped.txt');
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'File "dropped.txt" loaded successfully.'
+      );
+      expect(dropzone).toHaveAttribute('data-dragging', 'false');
+    });
+
+    it('normalizes CRLF line endings when dropping a .txt file', async () => {
+      render(<Converter />);
+
+      const dropzone = screen.getByTestId('file-dropzone');
+      const file = new File(['Line 1\r\nLine 2\r\nLine 3'], 'multiline-drop.txt', {
+        type: 'text/plain',
+      });
+
+      fireEvent.drop(dropzone, {
+        dataTransfer: {
+          files: [file],
+        },
+      });
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/english text/i)).toHaveValue(
+          'Line 1\nLine 2\nLine 3'
+        );
+      });
+
+      expect(screen.getByText('3 lines · 20 characters')).toBeInTheDocument();
+    });
+
+    it('rejects an invalid file type (.pdf, .png) dropped on the dropzone with an alert', async () => {
+      render(<Converter />);
+
+      const dropzone = screen.getByTestId('file-dropzone');
+      const pdfFile = new File(['%PDF-1.4 dummy content'], 'document.pdf', {
+        type: 'application/pdf',
+      });
+
+      fireEvent.drop(dropzone, {
+        dataTransfer: {
+          files: [pdfFile],
+        },
+      });
+
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toHaveTextContent(
+          'Invalid file type. Please upload a .txt file.'
+        );
+      });
+
+      expect(screen.queryByTestId('uploaded-file-name')).not.toBeInTheDocument();
+      expect(dropzone).toHaveAttribute('data-dragging', 'false');
+    });
+
+    it('rejects a dropped file exceeding the 100 KB limit with an alert', async () => {
+      render(<Converter />);
+
+      const dropzone = screen.getByTestId('file-dropzone');
+      const largeContent = 'a'.repeat(100 * 1024 + 1);
+      const largeFile = new File([largeContent], 'too-large.txt', {
+        type: 'text/plain',
+      });
+
+      fireEvent.drop(dropzone, {
+        dataTransfer: {
+          files: [largeFile],
+        },
+      });
+
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toHaveTextContent(
+          'File size exceeds the 100 KB limit. Please choose a smaller .txt file.'
+        );
+      });
+
+      expect(screen.queryByTestId('uploaded-file-name')).not.toBeInTheDocument();
+    });
+
+    it('rejects a dropped empty (0 bytes) file with an alert', async () => {
+      render(<Converter />);
+
+      const dropzone = screen.getByTestId('file-dropzone');
+      const emptyFile = new File([''], 'empty.txt', { type: 'text/plain' });
+
+      fireEvent.drop(dropzone, {
+        dataTransfer: {
+          files: [emptyFile],
+        },
+      });
+
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toHaveTextContent(
+          'The selected file is empty and contains no text.'
+        );
+      });
+
+      expect(screen.queryByTestId('uploaded-file-name')).not.toBeInTheDocument();
+    });
+
+    it('rejects a dropped whitespace-only file with an alert', async () => {
+      render(<Converter />);
+
+      const dropzone = screen.getByTestId('file-dropzone');
+      const whitespaceFile = new File(['   \n  \t  \n  '], 'spaces.txt', {
+        type: 'text/plain',
+      });
+
+      fireEvent.drop(dropzone, {
+        dataTransfer: {
+          files: [whitespaceFile],
+        },
+      });
+
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toHaveTextContent(
+          'The selected file contains only whitespace and has no usable text.'
+        );
+      });
+
+      expect(screen.queryByTestId('uploaded-file-name')).not.toBeInTheDocument();
+    });
+
+    it('rejects dropping multiple files with a clear error alert', async () => {
+      render(<Converter />);
+
+      const dropzone = screen.getByTestId('file-dropzone');
+      const file1 = new File(['Content 1'], 'file1.txt', { type: 'text/plain' });
+      const file2 = new File(['Content 2'], 'file2.txt', { type: 'text/plain' });
+
+      fireEvent.drop(dropzone, {
+        dataTransfer: {
+          files: [file1, file2],
+        },
+      });
+
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toHaveTextContent(
+          'Please drop only one file at a time.'
+        );
+      });
+
+      expect(screen.queryByTestId('uploaded-file-name')).not.toBeInTheDocument();
+    });
+
+    it('preserves native file input functionality alongside drag-and-drop', async () => {
+      const user = userEvent.setup();
+      render(<Converter />);
+
+      const fileInput = screen.getByLabelText(/upload \.txt file/i);
+      expect(fileInput).toBeInTheDocument();
+
+      const file = new File(['Uploaded via native picker'], 'native.txt', {
+        type: 'text/plain',
+      });
+      await user.upload(fileInput, file);
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/english text/i)).toHaveValue(
+          'Uploaded via native picker'
+        );
+      });
+      expect(screen.getByTestId('uploaded-file-name')).toHaveTextContent('native.txt');
+    });
+
+    it('allows full conversion and download workflow after dropping a .txt file', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.encodeText).mockResolvedValueOnce({
+        input: 'Dropped text to convert',
+        braille: '⠠⠙⠗⠕⠏⠏⠑⠙',
+      });
+
+      const createObjectURLMock = vi.fn().mockReturnValue('blob:http://localhost/mock-uuid');
+      const revokeObjectURLMock = vi.fn();
+      globalThis.URL.createObjectURL = createObjectURLMock;
+      globalThis.URL.revokeObjectURL = revokeObjectURLMock;
+
+      render(<Converter />);
+
+      const dropzone = screen.getByTestId('file-dropzone');
+      const file = new File(['Dropped text to convert'], 'convert-me.txt', {
+        type: 'text/plain',
+      });
+
+      fireEvent.drop(dropzone, {
+        dataTransfer: {
+          files: [file],
+        },
+      });
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/english text/i)).toHaveValue(
+          'Dropped text to convert'
+        );
+      });
+
+      // Convert
+      await user.click(screen.getByRole('button', { name: /^convert$/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText('⠠⠙⠗⠕⠏⠏⠑⠙')).toBeInTheDocument();
+      });
+
+      // Download
+      const downloadBtn = screen.getByRole('button', {
+        name: /download braille output/i,
+      });
+      await user.click(downloadBtn);
+
+      expect(createObjectURLMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not accept drop events when converter is disabled/loading', async () => {
+      let resolvePromise: (val: EncodeResponse) => void;
+      const pendingPromise = new Promise<EncodeResponse>((resolve) => {
+        resolvePromise = resolve;
+      });
+      vi.mocked(api.encodeText).mockReturnValueOnce(pendingPromise);
+
+      const user = userEvent.setup();
+      render(<Converter />);
+
+      const textarea = screen.getByLabelText(/english text/i);
+      await user.type(textarea, 'Working...');
+      await user.click(screen.getByRole('button', { name: /^convert$/i }));
+
+      const dropzone = screen.getByTestId('file-dropzone');
+      const file = new File(['Ignored file'], 'ignored.txt', { type: 'text/plain' });
+
+      fireEvent.drop(dropzone, {
+        dataTransfer: {
+          files: [file],
+        },
+      });
+
+      // Still the original value, not overwritten
+      expect(textarea).toHaveValue('Working...');
+      expect(screen.queryByTestId('uploaded-file-name')).not.toBeInTheDocument();
+
+      resolvePromise!({ input: 'Working...', braille: '⠠⠺' });
+      await waitFor(() => {
+        expect(screen.getByText('⠠⠺')).toBeInTheDocument();
+      });
+    });
+  });
 });
