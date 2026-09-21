@@ -2074,4 +2074,399 @@ describe('Converter Component', () => {
       });
     });
   });
+
+  describe('V4.5 File Workflow Improvements', () => {
+    it('improves replacing an uploaded file with another file via native file input', async () => {
+      const user = userEvent.setup();
+      render(<Converter />);
+
+      const fileInput = screen.getByLabelText(/upload \.txt file/i);
+      const textarea = screen.getByLabelText(/english text/i);
+
+      // 1. Upload first file
+      const firstFile = new File(['First file content'], 'first.txt', {
+        type: 'text/plain',
+      });
+      await user.upload(fileInput, firstFile);
+
+      expect(textarea).toHaveValue('First file content');
+      expect(screen.getByTestId('uploaded-file-name')).toHaveTextContent('first.txt');
+      expect(screen.getByText('18 characters')).toBeInTheDocument();
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'File "first.txt" loaded successfully.'
+      );
+
+      // 2. Replace with second file
+      const secondFile = new File(
+        ['Second file content replaced successfully'],
+        'second.txt',
+        { type: 'text/plain' }
+      );
+      await user.upload(fileInput, secondFile);
+
+      expect(textarea).toHaveValue('Second file content replaced successfully');
+      expect(screen.getByTestId('uploaded-file-name')).toHaveTextContent('second.txt');
+      expect(screen.getByText('41 characters')).toBeInTheDocument();
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'File "second.txt" loaded successfully.'
+      );
+    });
+
+    it('improves replacing an uploaded file with another file via drag-and-drop', async () => {
+      const user = userEvent.setup();
+      render(<Converter />);
+
+      const fileInput = screen.getByLabelText(/upload \.txt file/i);
+      const textarea = screen.getByLabelText(/english text/i);
+      const dropzone = screen.getByTestId('file-dropzone');
+
+      // 1. Upload initial file via native picker
+      const initialFile = new File(['Initial file'], 'initial.txt', {
+        type: 'text/plain',
+      });
+      await user.upload(fileInput, initialFile);
+      expect(textarea).toHaveValue('Initial file');
+      expect(screen.getByTestId('uploaded-file-name')).toHaveTextContent('initial.txt');
+
+      // 2. Drop replacement file
+      const droppedFile = new File(
+        ['Line A\nLine B\nLine C'],
+        'dropped-replacement.txt',
+        { type: 'text/plain' }
+      );
+      fireEvent.drop(dropzone, {
+        dataTransfer: {
+          files: [droppedFile],
+        },
+      });
+
+      await waitFor(() => {
+        expect(textarea).toHaveValue('Line A\nLine B\nLine C');
+      });
+      expect(screen.getByTestId('uploaded-file-name')).toHaveTextContent(
+        'dropped-replacement.txt'
+      );
+      expect(screen.getByText('3 lines · 20 characters')).toBeInTheDocument();
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'File "dropped-replacement.txt" loaded successfully.'
+      );
+    });
+
+    it('allows replacing an uploaded file with the exact same filename', async () => {
+      const user = userEvent.setup();
+      render(<Converter />);
+
+      const fileInput = screen.getByLabelText(/upload \.txt file/i);
+      const textarea = screen.getByLabelText(/english text/i);
+
+      // Upload version 1
+      const fileV1 = new File(['Version 1'], 'notes.txt', { type: 'text/plain' });
+      await user.upload(fileInput, fileV1);
+      expect(textarea).toHaveValue('Version 1');
+      expect(screen.getByTestId('uploaded-file-name')).toHaveTextContent('notes.txt');
+
+      // Manually edit textarea
+      await user.type(textarea, ' - edited locally');
+      expect(textarea).toHaveValue('Version 1 - edited locally');
+
+      // Re-upload the same filename with updated external content
+      const fileV2 = new File(['Version 2 updated on disk'], 'notes.txt', {
+        type: 'text/plain',
+      });
+      await user.upload(fileInput, fileV2);
+
+      expect(textarea).toHaveValue('Version 2 updated on disk');
+      expect(screen.getByTestId('uploaded-file-name')).toHaveTextContent('notes.txt');
+      expect(screen.getByText('25 characters')).toBeInTheDocument();
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'File "notes.txt" loaded successfully.'
+      );
+    });
+
+    it('maintains consistent filename, file content, character count, and line count when replacing with CRLF text', async () => {
+      const user = userEvent.setup();
+      render(<Converter />);
+
+      const fileInput = screen.getByLabelText(/upload \.txt file/i);
+      const textarea = screen.getByLabelText(/english text/i);
+
+      // Upload simple single-line file
+      const singleLine = new File(['Simple line'], 'simple.txt', {
+        type: 'text/plain',
+      });
+      await user.upload(fileInput, singleLine);
+      expect(screen.getByText('11 characters')).toBeInTheDocument();
+
+      // Replace with Windows CRLF multiline file
+      const crlfFile = new File(
+        ['First\r\nSecond\r\nThird\r\nFourth'],
+        'multiline-crlf.txt',
+        { type: 'text/plain' }
+      );
+      await user.upload(fileInput, crlfFile);
+
+      expect(textarea).toHaveValue('First\nSecond\nThird\nFourth');
+      expect(screen.getByTestId('uploaded-file-name')).toHaveTextContent(
+        'multiline-crlf.txt'
+      );
+      // Normalized: 4 lines · 25 characters
+      expect(screen.getByText('4 lines · 25 characters')).toBeInTheDocument();
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'File "multiline-crlf.txt" loaded successfully.'
+      );
+    });
+
+    it('completely replaces user manual edits when another file is uploaded', async () => {
+      const user = userEvent.setup();
+      render(<Converter />);
+
+      const fileInput = screen.getByLabelText(/upload \.txt file/i);
+      const textarea = screen.getByLabelText(/english text/i);
+
+      // 1. Upload draft
+      const draft = new File(['Draft paragraph'], 'draft.txt', {
+        type: 'text/plain',
+      });
+      await user.upload(fileInput, draft);
+      expect(textarea).toHaveValue('Draft paragraph');
+
+      // 2. User edits draft in textarea
+      await user.type(textarea, '\nExtra manual additions');
+      expect(textarea).toHaveValue('Draft paragraph\nExtra manual additions');
+      expect(screen.getByText('2 lines · 38 characters')).toBeInTheDocument();
+
+      // 3. Upload verified final file
+      const finalDoc = new File(['Final verified content'], 'final.txt', {
+        type: 'text/plain',
+      });
+      await user.upload(fileInput, finalDoc);
+
+      expect(textarea).toHaveValue('Final verified content');
+      expect(screen.getByTestId('uploaded-file-name')).toHaveTextContent('final.txt');
+      expect(screen.getByText('22 characters')).toBeInTheDocument();
+      expect(screen.queryByText(/draft paragraph/i)).not.toBeInTheDocument();
+    });
+
+    it('preserves manually edited text when removing only the file badge', async () => {
+      const user = userEvent.setup();
+      render(<Converter />);
+
+      const fileInput = screen.getByLabelText(/upload \.txt file/i);
+      const textarea = screen.getByLabelText(/english text/i);
+
+      // Upload template
+      const template = new File(['Template header'], 'template.txt', {
+        type: 'text/plain',
+      });
+      await user.upload(fileInput, template);
+
+      // Add manual edits
+      await user.type(textarea, '\nUser manual notes entered below.');
+      expect(textarea).toHaveValue(
+        'Template header\nUser manual notes entered below.'
+      );
+      expect(screen.getByTestId('uploaded-file-name')).toHaveTextContent(
+        'template.txt'
+      );
+      expect(screen.getByText('2 lines · 48 characters')).toBeInTheDocument();
+
+      // Remove only the file badge
+      const removeBtn = screen.getByRole('button', {
+        name: /remove uploaded file/i,
+      });
+      await user.click(removeBtn);
+
+      // Badge removed, but edited textarea content is preserved
+      expect(screen.queryByTestId('uploaded-file-name')).not.toBeInTheDocument();
+      expect(textarea).toHaveValue(
+        'Template header\nUser manual notes entered below.'
+      );
+      expect(screen.getByText('2 lines · 48 characters')).toBeInTheDocument();
+      expect(screen.getByRole('status')).toHaveTextContent('File removed.');
+    });
+
+    it('ensures global Clear resets all relevant file and conversion states', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.encodeText).mockResolvedValueOnce({
+        input: 'Text to convert and clear',
+        braille: '⠠⠞⠑⠭⠞',
+      });
+
+      render(<Converter />);
+
+      const fileInput = screen.getByLabelText(/upload \.txt file/i);
+      const textarea = screen.getByLabelText(/english text/i);
+
+      // Upload file
+      const file = new File(
+        ['Text to convert and clear'],
+        'convert-and-clear.txt',
+        { type: 'text/plain' }
+      );
+      await user.upload(fileInput, file);
+
+      expect(screen.getByTestId('uploaded-file-name')).toHaveTextContent(
+        'convert-and-clear.txt'
+      );
+      expect(textarea).toHaveValue('Text to convert and clear');
+
+      // Convert
+      const convertBtn = screen.getByRole('button', { name: /^convert$/i });
+      await user.click(convertBtn);
+
+      await waitFor(() => {
+        expect(screen.getByText('⠠⠞⠑⠭⠞')).toBeInTheDocument();
+      });
+
+      const copyBtn = screen.getByRole('button', {
+        name: /copy output to clipboard/i,
+      });
+      const downloadBtn = screen.getByRole('button', {
+        name: /download braille output/i,
+      });
+      expect(copyBtn).toBeEnabled();
+      expect(downloadBtn).toBeEnabled();
+
+      // Click global Clear
+      const clearBtn = screen.getByRole('button', { name: /clear input and output/i });
+      await user.click(clearBtn);
+
+      // Verify all file and conversion states are fully reset
+      expect(textarea).toHaveValue('');
+      expect(screen.queryByTestId('uploaded-file-name')).not.toBeInTheDocument();
+      expect(screen.queryByText('⠠⠞⠑⠭⠞')).not.toBeInTheDocument();
+      expect(
+        screen.getByText(/conversion output will appear here/i)
+      ).toBeInTheDocument();
+      expect(copyBtn).toBeDisabled();
+      expect(downloadBtn).toBeDisabled();
+      expect(screen.getAllByText('0 characters')).toHaveLength(2);
+      expect(screen.queryByText(/lines ·/)).not.toBeInTheDocument();
+
+      // Verify file input DOM is reset and can re-upload same file
+      await user.upload(fileInput, file);
+      expect(screen.getByTestId('uploaded-file-name')).toHaveTextContent(
+        'convert-and-clear.txt'
+      );
+      expect(textarea).toHaveValue('Text to convert and clear');
+    });
+
+    it('handles long filenames accessibly and responsively', async () => {
+      const user = userEvent.setup();
+      render(<Converter />);
+
+      const longFilename =
+        'quarterly_financial_summary_and_operational_analysis_report_for_braille_conversion_2026.txt';
+      const file = new File(['Long filename document content'], longFilename, {
+        type: 'text/plain',
+      });
+
+      const fileInput = screen.getByLabelText(/upload \.txt file/i);
+      await user.upload(fileInput, file);
+
+      // Verify filename badge is displayed with accessible attributes
+      const badgeSpan = screen.getByTestId('uploaded-file-name');
+      expect(badgeSpan).toHaveTextContent(longFilename);
+      expect(badgeSpan).toHaveAttribute('title', longFilename);
+      expect(badgeSpan.className).toContain('truncate');
+
+      // Verify semantic group container
+      const groupContainer = screen.getByRole('group', {
+        name: `Uploaded file: ${longFilename}`,
+      });
+      expect(groupContainer).toBeInTheDocument();
+
+      // Verify accessible remove button with tooltip
+      const removeBtn = screen.getByRole('button', {
+        name: /remove uploaded file/i,
+      });
+      expect(removeBtn).toHaveAttribute(
+        'title',
+        `Remove uploaded file: ${longFilename}`
+      );
+
+      // Verify status announcement includes full filename
+      expect(screen.getByRole('status')).toHaveTextContent(
+        `File "${longFilename}" loaded successfully.`
+      );
+
+      // Replace with short filename
+      const shortFile = new File(['Short content'], 'short.txt', {
+        type: 'text/plain',
+      });
+      await user.upload(fileInput, shortFile);
+
+      expect(screen.getByTestId('uploaded-file-name')).toHaveTextContent('short.txt');
+      expect(screen.getByRole('group', { name: 'Uploaded file: short.txt' })).toBeInTheDocument();
+    });
+
+    it('preserves existing textarea content and counts when replacement file is invalid', async () => {
+      const user = userEvent.setup();
+      render(<Converter />);
+
+      const fileInput = screen.getByLabelText(/upload \.txt file/i);
+      const textarea = screen.getByLabelText(/english text/i);
+      const dropzone = screen.getByTestId('file-dropzone');
+
+      // 1. Upload valid file
+      const validFile = new File(['Existing valid content'], 'existing.txt', {
+        type: 'text/plain',
+      });
+      await user.upload(fileInput, validFile);
+      expect(textarea).toHaveValue('Existing valid content');
+      expect(screen.getByText('22 characters')).toBeInTheDocument();
+
+      // 2. Try to drop invalid .pdf file onto dropzone
+      const invalidPdf = new File(['%PDF-1.4 dummy'], 'unsupported.pdf', {
+        type: 'application/pdf',
+      });
+      fireEvent.drop(dropzone, {
+        dataTransfer: {
+          files: [invalidPdf],
+        },
+      });
+
+      // Error alert displayed
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toHaveTextContent(
+          'Invalid file type. Please upload a .txt file.'
+        );
+      });
+      // Badge is cleared
+      expect(screen.queryByTestId('uploaded-file-name')).not.toBeInTheDocument();
+      // Textarea content and character counts are preserved
+      expect(textarea).toHaveValue('Existing valid content');
+      expect(screen.getByText('22 characters')).toBeInTheDocument();
+
+      // 3. Upload a new valid file
+      const recoveredFile = new File(['Recovered content'], 'recovered.txt', {
+        type: 'text/plain',
+      });
+      await user.upload(fileInput, recoveredFile);
+
+      // Alert dismissed, new file loaded
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(textarea).toHaveValue('Recovered content');
+      expect(screen.getByTestId('uploaded-file-name')).toHaveTextContent('recovered.txt');
+      expect(screen.getByText('17 characters')).toBeInTheDocument();
+    });
+
+    it('strips UTF-8 BOM when uploading file to ensure backend compatibility', async () => {
+      const user = userEvent.setup();
+      render(<Converter />);
+
+      const fileInput = screen.getByLabelText(/upload \.txt file/i);
+      const textarea = screen.getByLabelText(/english text/i);
+
+      // Text with UTF-8 BOM (\uFEFF)
+      const bomContent = '\uFEFFHello Braille';
+      const file = new File([bomContent], 'bom.txt', { type: 'text/plain' });
+      await user.upload(fileInput, file);
+
+      expect(textarea).toHaveValue('Hello Braille');
+      expect(screen.getByText('13 characters')).toBeInTheDocument();
+      expect(screen.getByTestId('uploaded-file-name')).toHaveTextContent('bom.txt');
+    });
+  });
 });
+

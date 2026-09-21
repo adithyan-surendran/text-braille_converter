@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { MAX_FILE_SIZE_BYTES } from '../types/api.ts';
 import type { ConversionMode } from '../types/api.ts';
 import { normalizeLineEndings } from '../utils/text.ts';
@@ -55,6 +55,13 @@ export default function InputPanel({
     uploadedFileName !== undefined ? uploadedFileName : internalFileName;
 
   const lineCount = value ? value.split('\n').length : 0;
+
+  // Clear native file input DOM element when uploadedFileName is reset or cleared
+  useEffect(() => {
+    if (!uploadedFileName && fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }, [uploadedFileName]);
 
   const processFile = async (file: File) => {
     // Validate file extension (.txt only)
@@ -259,6 +266,9 @@ export default function InputPanel({
               type="file"
               accept=".txt"
               disabled={disabled}
+              onClick={(e) => {
+                (e.target as HTMLInputElement).value = '';
+              }}
               onChange={handleFileChange}
               aria-label="Upload .txt file"
               className="text-xs text-slate-500 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border file:border-slate-300 file:text-xs file:font-medium file:bg-white hover:file:bg-slate-100 file:text-slate-700 file:cursor-pointer cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -269,10 +279,14 @@ export default function InputPanel({
           </div>
 
           {currentFileName && (
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-blue-50 border border-blue-200 rounded-md text-xs text-blue-700 font-medium">
+            <div
+              role="group"
+              aria-label={`Uploaded file: ${currentFileName}`}
+              className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-blue-50 border border-blue-200 rounded-md text-xs text-blue-700 font-medium max-w-full min-w-0 shadow-2xs"
+            >
               <span
                 data-testid="uploaded-file-name"
-                className="truncate max-w-[140px] sm:max-w-[200px]"
+                className="truncate min-w-0 max-w-[150px] sm:max-w-[260px] md:max-w-[340px] lg:max-w-[400px]"
                 title={currentFileName}
               >
                 📄 {currentFileName}
@@ -281,7 +295,8 @@ export default function InputPanel({
                 type="button"
                 onClick={handleRemoveFile}
                 aria-label="Remove uploaded file"
-                className="text-blue-500 hover:text-blue-800 font-bold px-1 rounded cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-600"
+                title={`Remove uploaded file: ${currentFileName}`}
+                className="shrink-0 text-blue-500 hover:text-blue-800 font-bold px-1 rounded cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-600"
               >
                 ×
               </button>
