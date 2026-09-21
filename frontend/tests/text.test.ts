@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeLineEndings } from '../src/utils/text.ts';
+import { formatPreview, generateHistoryId, normalizeLineEndings } from '../src/utils/text.ts';
 
 describe('normalizeLineEndings utility', () => {
   it('normalizes CRLF to LF', () => {
@@ -29,3 +29,38 @@ describe('normalizeLineEndings utility', () => {
     expect(normalizeLineEndings('')).toBe('');
   });
 });
+
+describe('formatPreview utility', () => {
+  it('returns (empty) for empty or whitespace-only strings', () => {
+    expect(formatPreview('')).toBe('(empty)');
+    expect(formatPreview('   \n\t  ')).toBe('(empty)');
+  });
+
+  it('normalizes whitespace and returns full text when within maxLength', () => {
+    expect(formatPreview('Hello world')).toBe('Hello world');
+    expect(formatPreview('  Hello   \n  world  ')).toBe('Hello world');
+  });
+
+  it('truncates and appends ellipsis when text exceeds maxLength', () => {
+    const longText = 'The quick brown fox jumps over the lazy dog';
+    expect(formatPreview(longText, 20)).toBe('The quick brown fox …');
+    expect(formatPreview(longText, 10)).toBe('The quick …');
+  });
+
+  it('preserves Braille characters during formatting and truncation', () => {
+    const braille = '⠠⠓⠑⠇⠇⠕ ⠠⠺⠕⠗⠇⠙';
+    expect(formatPreview(braille, 35)).toBe(braille);
+    expect(formatPreview('⠠⠓⠑⠇⠇⠕ ⠠⠺⠕⠗⠇⠙ ⠁⠛⠁⠊⠝', 10)).toBe('⠠⠓⠑⠇⠇⠕ ⠠⠺⠕…');
+  });
+});
+
+describe('generateHistoryId utility', () => {
+  it('generates distinct non-empty string IDs', () => {
+    const id1 = generateHistoryId();
+    const id2 = generateHistoryId();
+    expect(id1).toBeTruthy();
+    expect(id2).toBeTruthy();
+    expect(id1).not.toBe(id2);
+  });
+});
+

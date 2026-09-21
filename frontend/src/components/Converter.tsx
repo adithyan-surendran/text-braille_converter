@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react';
 import { decodeBraille, encodeText } from '../services/api.ts';
-import type { ConversionMode } from '../types/api.ts';
+import type { ConversionHistoryItem, ConversionMode } from '../types/api.ts';
+import { generateHistoryId } from '../utils/text.ts';
+import ConversionHistory from './ConversionHistory.tsx';
 import InputPanel from './InputPanel.tsx';
 import ModeToggle from './ModeToggle.tsx';
 import OutputPanel from './OutputPanel.tsx';
@@ -16,6 +18,7 @@ export default function Converter() {
   const [mobileTab, setMobileTab] = useState<'input' | 'output'>('input');
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
+  const [history, setHistory] = useState<ConversionHistoryItem[]>([]);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const outputRef = useRef<HTMLDivElement>(null);
@@ -31,16 +34,29 @@ export default function Converter() {
     setIsLoading(true);
 
     let isSuccess = false;
+    let convertedOutput = '';
     try {
       if (mode === 'text-to-braille') {
         const result = await encodeText(input);
         setOutput(result.braille);
+        convertedOutput = result.braille;
       } else {
         const result = await decodeBraille(input);
         setOutput(result.text);
+        convertedOutput = result.text;
       }
       isSuccess = true;
       setStatusMessage('Conversion complete.');
+      setHistory((prev) => [
+        {
+          id: generateHistoryId(),
+          mode,
+          inputText: input,
+          outputText: convertedOutput,
+          timestamp: Date.now(),
+        },
+        ...prev,
+      ].slice(0, 5));
     } catch (err) {
       setMobileTab('input');
       setStatusMessage('');
@@ -148,6 +164,25 @@ export default function Converter() {
   const handleDownloadError = (errorMessage: string) => {
     setError(errorMessage);
     setStatusMessage('');
+  };
+
+  const handleRestore = (item: ConversionHistoryItem) => {
+    setMode(item.mode);
+    setInput(item.inputText);
+    setOutput(item.outputText);
+    setError(null);
+    setCopied(false);
+    setCopyError(null);
+    setUploadedFileName(null);
+    setMobileTab('input');
+    const modeLabel =
+      item.mode === 'text-to-braille' ? 'Text to Braille' : 'Braille to Text';
+    setStatusMessage(`Restored ${modeLabel} conversion.`);
+  };
+
+  const handleClearHistory = () => {
+    setHistory([]);
+    setStatusMessage('Conversion history cleared.');
   };
 
   return (
@@ -316,6 +351,14 @@ export default function Converter() {
           </button>
         </div>
       </div>
+
+      {/* Conversion History */}
+      <ConversionHistory
+        history={history}
+        onRestore={handleRestore}
+        onClearHistory={handleClearHistory}
+        disabled={isLoading}
+      />
     </div>
   );
 }

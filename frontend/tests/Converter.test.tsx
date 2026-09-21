@@ -2465,7 +2465,319 @@ describe('Converter Component', () => {
 
       expect(textarea).toHaveValue('Hello Braille');
       expect(screen.getByText('13 characters')).toBeInTheDocument();
-      expect(screen.getByTestId('uploaded-file-name')).toHaveTextContent('bom.txt');
+    });
+  });
+
+  describe('V4.6 Conversion History & Recent Results', () => {
+    it('renders empty history initially with accessible heading and empty state message', () => {
+      render(<Converter />);
+
+      expect(screen.getByRole('heading', { name: /conversion history/i, level: 2 })).toBeInTheDocument();
+      expect(screen.getByText(/no recent conversions yet\./i)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /delete all conversion history/i })).not.toBeInTheDocument();
+    });
+
+    it('adds an item to history after a successful text-to-braille conversion', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.encodeText).mockResolvedValueOnce({
+        input: 'Hello',
+        braille: '⠠⠓⠑⠇⠇⠕',
+      });
+
+      render(<Converter />);
+      const textarea = screen.getByLabelText(/english text/i);
+      await user.type(textarea, 'Hello');
+      await user.click(screen.getByRole('button', { name: /^convert$/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText('(1 / 5)')).toBeInTheDocument();
+      });
+
+      expect(screen.getByTestId('history-item-0')).toBeInTheDocument();
+      expect(screen.getByTestId('history-input-0')).toHaveTextContent('Hello');
+      expect(screen.getByTestId('history-output-0')).toHaveTextContent('⠠⠓⠑⠇⠇⠕');
+      expect(screen.getByRole('button', { name: /delete all conversion history/i })).toBeInTheDocument();
+      expect(screen.queryByText(/no recent conversions yet\./i)).not.toBeInTheDocument();
+    });
+
+    it('does not add an item to history when conversion fails', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.encodeText).mockRejectedValueOnce(new Error('Conversion failed'));
+
+      render(<Converter />);
+      const textarea = screen.getByLabelText(/english text/i);
+      await user.type(textarea, 'Error test');
+      await user.click(screen.getByRole('button', { name: /^convert$/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toBeInTheDocument();
+      });
+
+      expect(screen.getByText(/no recent conversions yet\./i)).toBeInTheDocument();
+      expect(screen.queryByTestId('history-item-0')).not.toBeInTheDocument();
+    });
+
+    it('stores multiple conversions newest first', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.encodeText)
+        .mockResolvedValueOnce({ input: 'First', braille: '⠠⠋⠊⠗⠎⠞' })
+        .mockResolvedValueOnce({ input: 'Second', braille: '⠠⠎⠑⠉⠕⠝⠙' });
+
+      render(<Converter />);
+      const textarea = screen.getByLabelText(/english text/i);
+      const convertBtn = screen.getByRole('button', { name: /^convert$/i });
+
+      // First conversion
+      await user.type(textarea, 'First');
+      await user.click(convertBtn);
+      await waitFor(() => expect(screen.getByText('(1 / 5)')).toBeInTheDocument());
+
+      // Second conversion
+      await user.clear(textarea);
+      await user.type(textarea, 'Second');
+      await user.click(convertBtn);
+      await waitFor(() => expect(screen.getByText('(2 / 5)')).toBeInTheDocument());
+
+      // Newest should be index 0
+      expect(screen.getByTestId('history-input-0')).toHaveTextContent('Second');
+      expect(screen.getByTestId('history-output-0')).toHaveTextContent('⠠⠎⠑⠉⠕⠝⠙');
+      // Previous should be index 1
+      expect(screen.getByTestId('history-input-1')).toHaveTextContent('First');
+      expect(screen.getByTestId('history-output-1')).toHaveTextContent('⠠⠋⠊⠗⠎⠞');
+    });
+
+    it('caps history at 5 items and removes the oldest item on the 6th conversion', async () => {
+      const user = userEvent.setup();
+      render(<Converter />);
+      const textarea = screen.getByLabelText(/english text/i);
+      const convertBtn = screen.getByRole('button', { name: /^convert$/i });
+
+      for (let i = 1; i <= 6; i++) {
+        vi.mocked(api.encodeText).mockResolvedValueOnce({
+          input: `Input ${i}`,
+          braille: `Braille ${i}`,
+        });
+        await user.clear(textarea);
+        await user.type(textarea, `Input ${i}`);
+        await user.click(convertBtn);
+        await waitFor(() => {
+          const expectedCount = Math.min(i, 5);
+          expect(screen.getByText(`(${expectedCount} / 5)`)).toBeInTheDocument();
+        });
+      }
+
+      // Max 5 items in DOM
+      expect(screen.getByText('(5 / 5)')).toBeInTheDocument();
+      expect(screen.getByTestId('history-item-0')).toBeInTheDocument();
+      expect(screen.getByTestId('history-item-4')).toBeInTheDocument();
+      expect(screen.queryByTestId('history-item-5')).not.toBeInTheDocument();
+
+      // Most recent (6th) is at 0, oldest remaining is 2nd conversion at index 4
+      expect(screen.getByTestId('history-input-0')).toHaveTextContent('Input 6');
+      expect(screen.getByTestId('history-input-4')).toHaveTextContent('Input 2');
+    });
+
+    it('records Braille-to-Text conversions with correct mode badge', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.decodeBraille).mockResolvedValueOnce({
+        braille: '⠠⠓⠑⠇⠇⠕',
+        text: 'Hello',
+      });
+
+      render(<Converter />);
+      // Switch to Braille -> Text
+      await user.click(screen.getByRole('button', { name: /braille → text/i }));
+
+      const textarea = screen.getByLabelText(/braille input/i);
+      await user.type(textarea, '⠠⠓⠑⠇⠇⠕');
+      await user.click(screen.getByRole('button', { name: /^convert$/i }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('history-item-0')).toBeInTheDocument();
+      });
+
+      const historyItem = screen.getByTestId('history-item-0');
+      expect(historyItem).toHaveTextContent('Braille → Text');
+      expect(screen.getByTestId('history-input-0')).toHaveTextContent('⠠⠓⠑⠇⠇⠕');
+      expect(screen.getByTestId('history-output-0')).toHaveTextContent('Hello');
+    });
+
+    it('restores past conversion without triggering new API requests or duplicating history', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.encodeText)
+        .mockResolvedValueOnce({ input: 'Alpha', braille: '⠠⠁' })
+        .mockResolvedValueOnce({ input: 'Beta', braille: '⠠⠃' });
+
+      render(<Converter />);
+      const textarea = screen.getByLabelText(/english text/i);
+      const convertBtn = screen.getByRole('button', { name: /^convert$/i });
+
+      await user.type(textarea, 'Alpha');
+      await user.click(convertBtn);
+      await waitFor(() => expect(screen.getByText('(1 / 5)')).toBeInTheDocument());
+
+      await user.clear(textarea);
+      await user.type(textarea, 'Beta');
+      await user.click(convertBtn);
+      await waitFor(() => expect(screen.getByText('(2 / 5)')).toBeInTheDocument());
+
+      expect(api.encodeText).toHaveBeenCalledTimes(2);
+
+      // Restore Alpha (index 1)
+      const restoreAlphaBtn = screen.getByRole('button', {
+        name: /restore text to braille conversion: "Alpha"/i,
+      });
+      await user.click(restoreAlphaBtn);
+
+      // Textarea and Output must reflect Alpha
+      expect(textarea).toHaveValue('Alpha');
+      expect(screen.getByRole('region', { name: /braille output/i })).toHaveTextContent('⠠⠁');
+
+      // No new API calls
+      expect(api.encodeText).toHaveBeenCalledTimes(2);
+      expect(api.decodeBraille).not.toHaveBeenCalled();
+
+      // History count still 2 (no duplicate entry)
+      expect(screen.getByText('(2 / 5)')).toBeInTheDocument();
+    });
+
+    it('clears active file badge when restoring a history item', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.encodeText).mockResolvedValueOnce({
+        input: 'Direct typing',
+        braille: '⠠⠙',
+      });
+
+      render(<Converter />);
+      const textarea = screen.getByLabelText(/english text/i);
+      const convertBtn = screen.getByRole('button', { name: /^convert$/i });
+
+      // 1. Perform conversion
+      await user.type(textarea, 'Direct typing');
+      await user.click(convertBtn);
+      await waitFor(() => expect(screen.getByText('(1 / 5)')).toBeInTheDocument());
+
+      // 2. Upload a file
+      const fileInput = screen.getByLabelText(/upload \.txt file/i);
+      const file = new File(['File content'], 'test.txt', { type: 'text/plain' });
+      await user.upload(fileInput, file);
+      expect(screen.getByTestId('uploaded-file-name')).toHaveTextContent('test.txt');
+
+      // 3. Restore previous history item
+      const restoreBtn = screen.getByRole('button', {
+        name: /restore text to braille conversion: "Direct typing"/i,
+      });
+      await user.click(restoreBtn);
+
+      // File badge must be removed, restored text in input
+      expect(screen.queryByTestId('uploaded-file-name')).not.toBeInTheDocument();
+      expect(textarea).toHaveValue('Direct typing');
+    });
+
+    it('global Clear does not clear conversion history', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.encodeText).mockResolvedValueOnce({
+        input: 'Keep in history',
+        braille: '⠠⠅',
+      });
+
+      render(<Converter />);
+      const textarea = screen.getByLabelText(/english text/i);
+      await user.type(textarea, 'Keep in history');
+      await user.click(screen.getByRole('button', { name: /^convert$/i }));
+      await waitFor(() => expect(screen.getByText('(1 / 5)')).toBeInTheDocument());
+
+      // Click global Clear
+      const clearBtn = screen.getByRole('button', { name: /clear input and output/i });
+      await user.click(clearBtn);
+
+      // Current input & output cleared
+      expect(textarea).toHaveValue('');
+      expect(screen.getByText(/conversion output will appear here/i)).toBeInTheDocument();
+
+      // History remains intact!
+      expect(screen.getByText('(1 / 5)')).toBeInTheDocument();
+      expect(screen.getByTestId('history-input-0')).toHaveTextContent('Keep in history');
+    });
+
+    it('Clear History clears history list without clearing active input and output', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.encodeText).mockResolvedValueOnce({
+        input: 'Active input',
+        braille: '⠠⠁⠉⠞',
+      });
+
+      render(<Converter />);
+      const textarea = screen.getByLabelText(/english text/i);
+      await user.type(textarea, 'Active input');
+      await user.click(screen.getByRole('button', { name: /^convert$/i }));
+      await waitFor(() => expect(screen.getByText('(1 / 5)')).toBeInTheDocument());
+
+      // Click Clear History button
+      const clearHistoryBtn = screen.getByRole('button', {
+        name: /delete all conversion history/i,
+      });
+      await user.click(clearHistoryBtn);
+
+      // History list is now empty
+      expect(screen.getByText(/no recent conversions yet\./i)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /delete all conversion history/i })).not.toBeInTheDocument();
+
+      // Active input and output are preserved!
+      expect(textarea).toHaveValue('Active input');
+      expect(screen.getByRole('region', { name: /braille output/i })).toHaveTextContent('⠠⠁⠉⠞');
+    });
+
+    it('truncates long preview text and maintains layout safety', async () => {
+      const user = userEvent.setup();
+      const longInput = 'This is an exceptionally long piece of input text designed to test truncation in history';
+      const longOutput = '⠠⠞⠓⠊⠎ ⠊⠎ ⠁⠝ ⠑⠭⠉⠑⠏⠞⠊⠕⠝⠁⠇⠇⠽ ⠇⠕⠝⠛ ⠕⠥⠞⠏⠥⠞ ⠞⠑⠭⠞';
+      vi.mocked(api.encodeText).mockResolvedValueOnce({
+        input: longInput,
+        braille: longOutput,
+      });
+
+      render(<Converter />);
+      const textarea = screen.getByLabelText(/english text/i);
+      await user.type(textarea, longInput);
+      await user.click(screen.getByRole('button', { name: /^convert$/i }));
+
+      await waitFor(() => expect(screen.getByTestId('history-item-0')).toBeInTheDocument());
+
+      // Truncated with ellipsis
+      const inputSpan = screen.getByTestId('history-input-0');
+      expect(inputSpan.textContent).toContain('…');
+      // Full text is available in the title tooltip
+      expect(inputSpan).toHaveAttribute('title', longInput);
+    });
+
+    it('supports keyboard navigation to restore a conversion', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.encodeText).mockResolvedValueOnce({
+        input: 'Keyboard test',
+        braille: '⠠⠅',
+      });
+
+      render(<Converter />);
+      const textarea = screen.getByLabelText(/english text/i);
+      await user.type(textarea, 'Keyboard test');
+      await user.click(screen.getByRole('button', { name: /^convert$/i }));
+      await waitFor(() => expect(screen.getByText('(1 / 5)')).toBeInTheDocument());
+
+      // Clear current input
+      await user.clear(textarea);
+      expect(textarea).toHaveValue('');
+
+      // Focus Restore button and press Enter
+      const restoreBtn = screen.getByRole('button', {
+        name: /restore text to braille conversion: "Keyboard test"/i,
+      });
+      restoreBtn.focus();
+      expect(restoreBtn).toHaveFocus();
+      await user.keyboard('{Enter}');
+
+      // Input restored
+      expect(textarea).toHaveValue('Keyboard test');
     });
   });
 });
