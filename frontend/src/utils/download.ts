@@ -26,3 +26,18 @@ export const downloadTextFile = (content: string, filename: string): void => {
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 };
+
+/**
+ * Triggers a browser-safe file download from a Blob (e.g. backend-generated PDF).
+ * Creates a temporary object URL, triggers an anchor click, and revokes the URL.
+ */
+export const downloadBlobFile = (blob: Blob, filename: string): void => {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};

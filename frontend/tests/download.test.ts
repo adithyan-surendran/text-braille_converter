@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { downloadTextFile, getDownloadFilename } from '../src/utils/download.ts';
+import { downloadBlobFile, downloadTextFile, getDownloadFilename } from '../src/utils/download.ts';
 
 describe('Download Utilities', () => {
   beforeEach(() => {
@@ -66,4 +66,36 @@ describe('Download Utilities', () => {
       expect(revokeObjectURLMock).toHaveBeenCalledWith(mockUrl);
     });
   });
+
+  describe('downloadBlobFile', () => {
+    it('creates object URL from Blob, clicks anchor, appends/removes child, and revokes URL', () => {
+      const mockUrl = 'blob:http://localhost/test-pdf-uuid';
+      const createObjectURLMock = vi.fn().mockReturnValue(mockUrl);
+      const revokeObjectURLMock = vi.fn();
+      window.URL.createObjectURL = createObjectURLMock;
+      window.URL.revokeObjectURL = revokeObjectURLMock;
+
+      const clickMock = vi.fn();
+      const clickSpy = vi
+        .spyOn(HTMLAnchorElement.prototype, 'click')
+        .mockImplementation(clickMock);
+      const appendSpy = vi.spyOn(document.body, 'appendChild');
+      const removeSpy = vi.spyOn(document.body, 'removeChild');
+
+      const blob = new Blob(['%PDF-1.4 sample content'], { type: 'application/pdf' });
+      const filename = 'braille-conversion.pdf';
+
+      downloadBlobFile(blob, filename);
+
+      expect(createObjectURLMock).toHaveBeenCalledWith(blob);
+      expect(appendSpy).toHaveBeenCalledTimes(1);
+      const appended = appendSpy.mock.calls[0][0] as HTMLAnchorElement;
+      expect(appended.download).toBe(filename);
+      expect(appended.href).toBe(mockUrl);
+      expect(clickSpy).toHaveBeenCalledTimes(1);
+      expect(removeSpy).toHaveBeenCalledWith(appended);
+      expect(revokeObjectURLMock).toHaveBeenCalledWith(mockUrl);
+    });
+  });
 });
+

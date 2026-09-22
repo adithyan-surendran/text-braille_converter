@@ -6,12 +6,15 @@ from pydantic import ValidationError
 from app.main import (
     DecodeRequest,
     EncodeRequest,
+    GeneratePdfRequest,
     app,
     decode_braille,
     encode_file,
     encode_text,
+    generate_pdf,
     health_check,
 )
+from app.pdf_generator import generate_conversion_pdf
 
 
 async def call_asgi(
@@ -63,11 +66,12 @@ async def call_asgi(
         k.decode(): v.decode() for k, v in response_started.get("headers", [])
     }
     resp_status = response_started.get("status", 500)
-    raw_body = b"".join(response_body).decode()
+    raw_bytes = b"".join(response_body)
     try:
-        resp_data = json.loads(raw_body) if raw_body else {}
+        raw_text = raw_bytes.decode("utf-8")
+        resp_data = json.loads(raw_text) if raw_text else {}
     except Exception:
-        resp_data = raw_body
+        resp_data = raw_bytes
     return resp_status, resp_data, resp_headers
 
 
@@ -377,5 +381,176 @@ async def test_unit_encode_file_direct():
     response = await encode_file(upload_file)
     assert response.input == "Direct Unit Test"
     assert "⠠⠙" in response.braille
+
+
+# --- V4.8 POST /api/generate-pdf Tests ---
+
+
+@pytest.mark.anyio
+async def test_contract_generate_pdf_valid():
+    """Verify PDF endpoint accepts valid input, returns application/pdf and contains expected text."""
+    import io
+    import pypdf
+
+    payload = {
+        "input": "Hello 123!",
+        "braille": "⠠⠓⠑⠇⠇⠕ ⠼⠁⠃⠉⠖",
+    }
+    status, raw_bytes, headers = await call_asgi("POST", "/api/generate-pdf", data=payload)
+
+    assert status == 200
+    assert "application/pdf" in headers.get("content-type", "").lower()
+    assert "braille-conversion.pdf" in headers.get("content-disposition", "")
+    assert isinstance(raw_bytes, bytes)
+    assert raw_bytes.startswith(b"%PDF-")
+
+    # Read and inspect PDF content
+    reader = pypdf.PdfReader(io.BytesIO(raw_bytes))
+    assert len(reader.pages) >= 1
+    extracted_text = reader.pages[0].extract_text()
+
+    assert "Text-to-Braille Conversion" in extracted_text
+    assert "Original Text" in extracted_text
+    assert "Hello 123!" in extracted_text
+    assert "Braille Output" in extracted_text
+    assert "⠠⠓⠑⠇⠇⠕ ⠼⠁⠃⠉⠖" in extracted_text
+
+
+@pytest.mark.anyio
+async def test_contract_generate_pdf_multiline():
+    """Verify multiline text is correctly handled and rendered in the PDF."""
+    import io
+    import pypdf
+
+    multiline_text = "Line 1: First\nLine 2: Second\nLine 3: Third"
+    multiline_braille = "⠠⠇⠊⠝⠑ ⠼⠁\n⠠⠇⠊⠝⠑ ⠼⠃\n⠠⠇⠊⠝⠑ ⠼⠉"
+    payload = {
+        "input": multiline_text,
+        "braille": multiline_braille,
+    }
+    status, raw_bytes, _ = await call_asgi("POST", "/api/generate-pdf", data=payload)
+
+    assert status == 200
+    reader = pypdf.PdfReader(io.BytesIO(raw_bytes))
+    full_text = "\n".join([page.extract_text() for page in reader.pages])
+
+    assert "Line 1: First" in full_text
+    assert "Line 2: Second" in full_text
+    assert "Line 3: Third" in full_text
+    assert "⠠⠇⠊⠝⠑ ⠼⠁" in full_text
+    assert "⠠⠇⠊⠝⠑ ⠼⠃" in full_text
+    assert "⠠⠇⠊⠝⠑ ⠼⠉" in full_text
+
+
+@pytest.mark.anyio
+async def test_contract_generate_pdf_multipage():
+    """Verify long content properly flows across multiple pages without errors."""
+    import io
+    import pypdf
+
+    long_input = "\n".join([f"Line {i}: English content test number {i}" for i in range(120)])
+    long_braille = "\n".join([f"⠠⠇⠊⠝⠑ {i}: ⠠⠃⠗⠁⠊⠇⠇⠑ {i}" for i in range(120)])
+    payload = {
+        "input": long_input,
+        "braille": long_braille,
+    }
+    status, raw_bytes, _ = await call_asgi("POST", "/api/generate-pdf", data=payload)
+
+    assert status == 200
+    reader = pypdf.PdfReader(io.BytesIO(raw_bytes))
+    assert len(reader.pages) > 1
+
+
+@pytest.mark.anyio
+async def test_contract_generate_pdf_empty_content_rejected():
+    """Verify empty or whitespace-only content is rejected with HTTP 400."""
+    payloads = [
+        {"input": "", "braille": ""},
+        {"input": "   ", "braille": "   \n\t  "},
+    ]
+    for p in payloads:
+        status, data, _ = await call_asgi("POST", "/api/generate-pdf", data=p)
+        assert status == 400
+        assert "detail" in data
+        assert "empty content" in data["detail"].lower()
+
+
+@pytest.mark.anyio
+async def test_contract_generate_pdf_missing_fields():
+    """Verify missing required fields are rejected with HTTP 422 validation error."""
+    invalid_payloads = [
+        {},
+        {"input": "Missing braille"},
+        {"braille": "Missing input"},
+    ]
+    for p in invalid_payloads:
+        status, data, _ = await call_asgi("POST", "/api/generate-pdf", data=p)
+        assert status == 422
+
+
+@pytest.mark.anyio
+async def test_contract_generate_pdf_invalid_types():
+    """Verify non-string types for fields are rejected with HTTP 422."""
+    payload = {
+        "input": 12345,
+        "braille": ["not", "a", "string"],
+    }
+    status, data, _ = await call_asgi("POST", "/api/generate-pdf", data=payload)
+    assert status == 422
+
+
+@pytest.mark.anyio
+async def test_contract_generate_pdf_unicode_braille_preservation():
+    """Verify that Unicode Braille characters are preserved and rendered without missing glyph replacements."""
+    import io
+    import pypdf
+
+    # Comprehensive Braille characters covering letters, capital indicators, number signs, and punctuation
+    braille_sample = "⠠⠁⠃⠉⠙⠑ ⠼⠁⠃⠉ ⠲⠂⠦⠖⠄⠤⠒ ⠿"
+    payload = {
+        "input": "abcde 123 .,?!'-: [full-cell]",
+        "braille": braille_sample,
+    }
+    status, raw_bytes, _ = await call_asgi("POST", "/api/generate-pdf", data=payload)
+    assert status == 200
+
+    reader = pypdf.PdfReader(io.BytesIO(raw_bytes))
+    extracted = reader.pages[0].extract_text()
+    assert braille_sample in extracted
+    # Ensure no missing glyph replacement boxes
+    assert "□" not in extracted
+    assert "?" not in extracted or "?" in payload["input"]
+
+
+def test_unit_generate_conversion_pdf_direct():
+    """Unit test for generate_conversion_pdf direct invocation."""
+    import io
+    import pypdf
+
+    pdf_bytes = generate_conversion_pdf("Direct Unit", "⠠⠙⠊⠗⠑⠉⠞")
+    assert isinstance(pdf_bytes, bytes)
+    assert pdf_bytes.startswith(b"%PDF-")
+
+    reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
+    text = reader.pages[0].extract_text()
+    assert "Direct Unit" in text
+    assert "⠠⠙⠊⠗⠑⠉⠞" in text
+
+
+def test_unit_generate_pdf_endpoint_direct():
+    """Unit test for generate_pdf endpoint function directly."""
+    req = GeneratePdfRequest(input="Endpoint Test", braille="⠠⠑⠝⠙")
+    resp = generate_pdf(req)
+    assert resp.media_type == "application/pdf"
+    assert resp.headers["Content-Disposition"] == 'attachment; filename="braille-conversion.pdf"'
+    assert resp.body.startswith(b"%PDF-")
+
+
+def test_unit_generate_pdf_empty_raises_400():
+    """Unit test that empty payload raises HTTPException 400."""
+    req = GeneratePdfRequest(input="   ", braille="")
+    with pytest.raises(HTTPException) as exc_info:
+        generate_pdf(req)
+    assert exc_info.value.status_code == 400
 
 

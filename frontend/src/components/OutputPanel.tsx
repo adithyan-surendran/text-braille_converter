@@ -43,6 +43,8 @@ interface OutputPanelProps {
   disabled?: boolean;
   onDownloadSuccess?: () => void;
   onError?: (error: string) => void;
+  onDownloadPdf?: () => void;
+  isGeneratingPdf?: boolean;
 }
 
 export default function OutputPanel({
@@ -55,13 +57,17 @@ export default function OutputPanel({
   disabled = false,
   onDownloadSuccess,
   onError,
+  onDownloadPdf,
+  isGeneratingPdf = false,
 }: OutputPanelProps) {
   const isTextToBraille = mode === 'text-to-braille';
   const labelText = isTextToBraille ? 'Braille output' : 'Text output';
 
   const [internalSizeIndex, setInternalSizeIndex] = useState<number>(DEFAULT_BRAILLE_SIZE_INDEX);
   const [downloaded, setDownloaded] = useState<boolean>(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
   const downloadTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   const filename = getDownloadFilename(mode);
 
@@ -69,6 +75,7 @@ export default function OutputPanel({
   if (prevTracked.value !== value || prevTracked.mode !== mode) {
     setPrevTracked({ value, mode });
     setDownloaded(false);
+    setIsDropdownOpen(false);
   }
 
   useEffect(() => {
@@ -78,6 +85,27 @@ export default function OutputPanel({
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!isDropdownOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isDropdownOpen]);
+
 
   const handleDownload = () => {
     if (!value || disabled) return;
@@ -200,42 +228,127 @@ export default function OutputPanel({
       {/* Output Action Bar */}
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3 pb-2 border-b border-slate-100 min-h-[33px]">
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleDownload}
-            disabled={!value || disabled}
-            aria-label={`Download ${isTextToBraille ? 'Braille' : 'text'} output`}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border shadow-2xs transition-all cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500/20 disabled:opacity-40 disabled:cursor-not-allowed ${
-              downloaded
-                ? 'bg-emerald-50 border-emerald-300 text-emerald-700 focus-visible:outline-emerald-600 focus-visible:ring-emerald-400/30'
-                : 'bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 border-slate-300'
-            }`}
-          >
-            <svg
-              className="w-3.5 h-3.5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              aria-hidden="true"
+          {/* Download Split Dropdown Button */}
+          <div className="relative inline-flex items-center" ref={dropdownRef}>
+            <div
+              className={`inline-flex items-center rounded-lg border shadow-2xs transition-all ${
+                downloaded
+                  ? 'bg-emerald-50 border-emerald-300'
+                  : 'bg-white border-slate-300'
+              }`}
             >
-              {downloaded ? (
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M5 13l4 4L19 7"
-                />
-              ) : (
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                />
-              )}
-            </svg>
-            <span>{downloaded ? 'Downloaded!' : 'Download'}</span>
-          </button>
+              <button
+                type="button"
+                onClick={handleDownload}
+                disabled={!value || disabled || isGeneratingPdf}
+                aria-label={`Download ${isTextToBraille ? 'Braille' : 'text'} output`}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-l-lg transition-all cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500/20 disabled:opacity-40 disabled:cursor-not-allowed ${
+                  downloaded
+                    ? 'text-emerald-700'
+                    : 'text-slate-700 hover:bg-slate-50 active:bg-slate-100'
+                }`}
+              >
+                <svg
+                  className="w-3.5 h-3.5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  {downloaded ? (
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M5 13l4 4L19 7"
+                    />
+                  ) : (
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                    />
+                  )}
+                </svg>
+                <span>
+                  {isGeneratingPdf
+                    ? 'Downloading PDF...'
+                    : downloaded
+                    ? 'Downloaded!'
+                    : 'Download'}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsDropdownOpen((prev) => !prev)}
+                disabled={!value || disabled || isGeneratingPdf}
+                aria-label="Format options"
+                aria-haspopup="menu"
+                aria-expanded={isDropdownOpen}
+                className={`px-1.5 py-1 text-xs border-l transition-colors cursor-pointer rounded-r-lg focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500/20 disabled:opacity-40 disabled:cursor-not-allowed ${
+                  downloaded
+                    ? 'border-emerald-200 text-emerald-700 hover:bg-emerald-100/60'
+                    : 'border-slate-200 text-slate-600 hover:bg-slate-50 active:bg-slate-100'
+                }`}
+              >
+                <svg
+                  className={`w-3.5 h-3.5 transition-transform duration-150 ${
+                    isDropdownOpen ? 'rotate-180' : ''
+                  }`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
+              </button>
+            </div>
+
+            {/* Dropdown Menu */}
+            {isDropdownOpen && (
+              <div
+                role="menu"
+                aria-label="Download formats"
+                className="absolute left-0 top-full mt-1.5 w-44 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-30 animate-in fade-in zoom-in-95 duration-100"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  aria-label="Download as text (.txt)"
+                  onClick={() => {
+                    setIsDropdownOpen(false);
+                    handleDownload();
+                  }}
+                  className="w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-blue-50 hover:text-blue-700 flex items-center justify-between transition-colors cursor-pointer"
+                >
+                  <span className="font-medium">Text (.txt)</span>
+                  <span className="text-[10px] text-slate-400 font-mono">.txt</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  aria-label="Download as PDF (.pdf)"
+                  onClick={() => {
+                    setIsDropdownOpen(false);
+                    onDownloadPdf?.();
+                  }}
+                  disabled={isGeneratingPdf}
+                  className="w-full text-left px-3 py-2 text-xs text-slate-700 hover:bg-blue-50 hover:text-blue-700 flex items-center justify-between transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span className="font-medium">PDF Document (.pdf)</span>
+                  <span className="text-[10px] text-slate-400 font-mono">.pdf</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {value ? (

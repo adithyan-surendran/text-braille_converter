@@ -10,7 +10,9 @@ vi.mock('../src/services/api.ts', () => ({
   encodeText: vi.fn(),
   decodeBraille: vi.fn(),
   encodeFile: vi.fn(),
+  generatePdf: vi.fn(),
 }));
+
 
 describe('Converter Component', () => {
   beforeEach(() => {
@@ -1476,7 +1478,7 @@ describe('Converter Component', () => {
         expect(screen.getByText('⠠⠓⠑⠇⠇⠕')).toBeInTheDocument();
       });
 
-      const downloadBtn = screen.getByRole('button', { name: /download/i });
+      const downloadBtn = screen.getByRole('button', { name: /download braille output/i });
       expect(downloadBtn).toBeVisible();
       expect(downloadBtn).not.toBeDisabled();
       expect(screen.getByTestId('output-filename')).toHaveTextContent('braille-output.txt');
@@ -2986,5 +2988,257 @@ describe('Converter Component', () => {
       expect(screen.getByLabelText(/english text/i)).toHaveValue('Replaced with text file');
     });
   });
+
+  describe('V4.8 PDF Output / Download (Dropdown Option)', () => {
+    it('does not display a separate Download PDF button in the main action buttons', () => {
+      render(<Converter />);
+      expect(screen.queryByRole('button', { name: /^download pdf$/i })).not.toBeInTheDocument();
+    });
+
+    it('enables the download format dropdown options when conversion output exists', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.encodeText).mockResolvedValueOnce({
+        input: 'Hello 123!',
+        braille: '⠠⠓⠑⠇⠇⠕ ⠼⠁⠃⠉⠖',
+      });
+
+      render(<Converter />);
+      const textarea = screen.getByLabelText(/english text/i);
+      await user.type(textarea, 'Hello 123!');
+      await user.click(screen.getByRole('button', { name: /^convert$/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText('⠠⠓⠑⠇⠇⠕ ⠼⠁⠃⠉⠖')).toBeInTheDocument();
+      });
+
+      const dropdownBtn = screen.getByRole('button', { name: /format options/i });
+      expect(dropdownBtn).toBeInTheDocument();
+      expect(dropdownBtn).toBeEnabled();
+
+      // Open dropdown
+      await user.click(dropdownBtn);
+      expect(screen.getByRole('menuitem', { name: /download as text/i })).toBeInTheDocument();
+      expect(screen.getByRole('menuitem', { name: /download as pdf/i })).toBeInTheDocument();
+    });
+
+    it('calls generatePdf with correct input and braille data when PDF option is selected in dropdown', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.encodeText).mockResolvedValueOnce({
+        input: 'Hello 123!',
+        braille: '⠠⠓⠑⠇⠇⠕ ⠼⠁⠃⠉⠖',
+      });
+      const dummyBlob = new Blob(['%PDF-1.4 test'], { type: 'application/pdf' });
+      vi.mocked(api.generatePdf).mockResolvedValueOnce(dummyBlob);
+
+      const createObjectURLMock = vi.fn().mockReturnValue('blob:http://localhost/test-url');
+      const revokeObjectURLMock = vi.fn();
+      window.URL.createObjectURL = createObjectURLMock;
+      window.URL.revokeObjectURL = revokeObjectURLMock;
+      const clickMock = vi.fn();
+      vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(clickMock);
+
+      render(<Converter />);
+      await user.type(screen.getByLabelText(/english text/i), 'Hello 123!');
+      await user.click(screen.getByRole('button', { name: /^convert$/i }));
+
+      // Open download dropdown
+      const dropdownBtn = await screen.findByRole('button', { name: /format options/i });
+      await user.click(dropdownBtn);
+
+      const pdfOption = screen.getByRole('menuitem', { name: /download as pdf/i });
+      await user.click(pdfOption);
+
+      expect(api.generatePdf).toHaveBeenCalledTimes(1);
+      expect(api.generatePdf).toHaveBeenCalledWith({
+        input: 'Hello 123!',
+        braille: '⠠⠓⠑⠇⠇⠕ ⠼⠁⠃⠉⠖',
+      });
+
+      // Browser download triggered
+      expect(createObjectURLMock).toHaveBeenCalledWith(dummyBlob);
+      expect(clickMock).toHaveBeenCalledTimes(1);
+      expect(revokeObjectURLMock).toHaveBeenCalledWith('blob:http://localhost/test-url');
+    });
+
+    it('shows loading state and disables download button while generating PDF', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.encodeText).mockResolvedValueOnce({
+        input: 'Test',
+        braille: '⠠⠞⠑⠎⠞',
+      });
+
+      let resolvePdfPromise: (blob: Blob) => void;
+      const pendingPdfPromise = new Promise<Blob>((res) => {
+        resolvePdfPromise = res;
+      });
+      vi.mocked(api.generatePdf).mockReturnValueOnce(pendingPdfPromise);
+
+      render(<Converter />);
+      await user.type(screen.getByLabelText(/english text/i), 'Test');
+      await user.click(screen.getByRole('button', { name: /^convert$/i }));
+
+      const dropdownBtn = await screen.findByRole('button', { name: /format options/i });
+      await user.click(dropdownBtn);
+
+      const pdfOption = screen.getByRole('menuitem', { name: /download as pdf/i });
+      await user.click(pdfOption);
+
+      // Verify loading state on the download button
+      const downloadBtn = screen.getByRole('button', { name: /download braille output/i });
+      expect(downloadBtn).toHaveTextContent(/downloading pdf\.\.\./i);
+      expect(downloadBtn).toBeDisabled();
+      expect(screen.getByRole('button', { name: /^convert$/i })).toBeDisabled();
+      expect(screen.getByRole('button', { name: /clear/i })).toBeDisabled();
+
+      // Resolve PDF
+      const dummyBlob = new Blob(['%PDF-1.4'], { type: 'application/pdf' });
+      window.URL.createObjectURL = vi.fn().mockReturnValue('blob:test');
+      window.URL.revokeObjectURL = vi.fn();
+      vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(vi.fn());
+
+      resolvePdfPromise!(dummyBlob);
+
+      await waitFor(() => {
+        expect(downloadBtn).toHaveTextContent(/download/i);
+        expect(downloadBtn).toBeEnabled();
+      });
+    });
+
+    it('displays accessible error and retains input/output when PDF generation fails', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.encodeText).mockResolvedValueOnce({
+        input: 'Test Text',
+        braille: '⠠⠞⠑⠎⠞',
+      });
+      vi.mocked(api.generatePdf).mockRejectedValueOnce(
+        new Error('Failed to generate PDF. Server error.')
+      );
+
+      render(<Converter />);
+      await user.type(screen.getByLabelText(/english text/i), 'Test Text');
+      await user.click(screen.getByRole('button', { name: /^convert$/i }));
+
+      const dropdownBtn = await screen.findByRole('button', { name: /format options/i });
+      await user.click(dropdownBtn);
+
+      const pdfOption = screen.getByRole('menuitem', { name: /download as pdf/i });
+      await user.click(pdfOption);
+
+      // Error alert displayed
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toHaveTextContent('Failed to generate PDF. Server error.');
+      });
+
+      // Existing input and output remain intact
+      expect(screen.getByLabelText(/english text/i)).toHaveValue('Test Text');
+      expect(screen.getByRole('region', { name: /braille output/i })).toHaveTextContent('⠠⠞⠑⠎⠞');
+
+      // User can retry
+      const downloadBtn = screen.getByRole('button', { name: /download braille output/i });
+      expect(downloadBtn).toBeEnabled();
+    });
+
+    it('downloading PDF does not create a new history entry', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.encodeText).mockResolvedValueOnce({
+        input: 'Single Conversion',
+        braille: '⠠⠎',
+      });
+      vi.mocked(api.generatePdf).mockResolvedValueOnce(new Blob(['%PDF-1.4']));
+      window.URL.createObjectURL = vi.fn().mockReturnValue('blob:test');
+      window.URL.revokeObjectURL = vi.fn();
+      vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(vi.fn());
+
+      render(<Converter />);
+      await user.type(screen.getByLabelText(/english text/i), 'Single Conversion');
+      await user.click(screen.getByRole('button', { name: /^convert$/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText('(1 / 5)')).toBeInTheDocument();
+      });
+
+      const dropdownBtn = screen.getByRole('button', { name: /format options/i });
+      await user.click(dropdownBtn);
+      const pdfOption = screen.getByRole('menuitem', { name: /download as pdf/i });
+      await user.click(pdfOption);
+
+      // History count still 1
+      expect(screen.getByText('(1 / 5)')).toBeInTheDocument();
+    });
+
+    it('allows downloading PDF after restoring a history item via dropdown', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.encodeText).mockResolvedValueOnce({
+        input: 'History Item For PDF',
+        braille: '⠠⠓⠊⠎',
+      });
+      vi.mocked(api.generatePdf).mockResolvedValueOnce(new Blob(['%PDF-1.4']));
+      window.URL.createObjectURL = vi.fn().mockReturnValue('blob:test');
+      window.URL.revokeObjectURL = vi.fn();
+      vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(vi.fn());
+
+      render(<Converter />);
+      await user.type(screen.getByLabelText(/english text/i), 'History Item For PDF');
+      await user.click(screen.getByRole('button', { name: /^convert$/i }));
+
+      // Clear input and output
+      await user.click(screen.getByRole('button', { name: /clear input and output/i }));
+      const downloadBtn = screen.getByRole('button', { name: /download braille output/i });
+      expect(downloadBtn).toBeDisabled();
+
+      // Restore history
+      const restoreBtn = screen.getByRole('button', {
+        name: /restore text to braille conversion: "History Item For PDF"/i,
+      });
+      await user.click(restoreBtn);
+
+      // Download dropdown options are enabled again
+      const dropdownBtn = await screen.findByRole('button', { name: /format options/i });
+      expect(dropdownBtn).toBeEnabled();
+      await user.click(dropdownBtn);
+
+      const pdfOption = screen.getByRole('menuitem', { name: /download as pdf/i });
+      await user.click(pdfOption);
+
+      expect(api.generatePdf).toHaveBeenCalledWith({
+        input: 'History Item For PDF',
+        braille: '⠠⠓⠊⠎',
+      });
+    });
+
+    it('allows downloading PDF after PDF file upload and extraction via dropdown', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.encodeFile).mockResolvedValueOnce({
+        input: 'Uploaded PDF text',
+        braille: '⠠⠥⠏⠇⠕⠁⠙',
+      });
+      vi.mocked(api.generatePdf).mockResolvedValueOnce(new Blob(['%PDF-1.4']));
+      window.URL.createObjectURL = vi.fn().mockReturnValue('blob:test');
+      window.URL.revokeObjectURL = vi.fn();
+      vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(vi.fn());
+
+      render(<Converter />);
+      const fileInput = screen.getByLabelText(/upload \.txt file or \.pdf file/i);
+      const pdf = new File(['%PDF-1.4'], 'test.pdf', { type: 'application/pdf' });
+
+      await user.upload(fileInput, pdf);
+
+      await waitFor(() => {
+        expect(screen.getByText('⠠⠥⠏⠇⠕⠁⠙')).toBeInTheDocument();
+      });
+
+      const dropdownBtn = screen.getByRole('button', { name: /format options/i });
+      await user.click(dropdownBtn);
+      const pdfOption = screen.getByRole('menuitem', { name: /download as pdf/i });
+      await user.click(pdfOption);
+
+      expect(api.generatePdf).toHaveBeenCalledWith({
+        input: 'Uploaded PDF text',
+        braille: '⠠⠥⠏⠇⠕⠁⠙',
+      });
+    });
+  });
 });
+
+
 

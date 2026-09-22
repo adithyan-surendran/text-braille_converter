@@ -1,6 +1,6 @@
 import io
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import pypdf
@@ -8,6 +8,7 @@ import pypdf
 from app.braille.decoder import decode
 from app.braille.encoder import encode
 from app.braille.validator import validate_braille, validate_text
+from app.pdf_generator import generate_conversion_pdf
 
 MAX_FILE_SIZE_BYTES = 100 * 1024  # 100 KB limit for uploaded files
 
@@ -58,6 +59,11 @@ class DecodeRequest(BaseModel):
 class DecodeResponse(BaseModel):
     braille: str
     text: str
+
+
+class GeneratePdfRequest(BaseModel):
+    input: str
+    braille: str
 
 
 @app.get("/api/health", response_model=HealthResponse, summary="Health Check")
@@ -161,4 +167,34 @@ async def encode_file(file: UploadFile = File(...)) -> EncodeResponse:
 
     braille_output = encode(normalized_text)
     return EncodeResponse(input=normalized_text, braille=braille_output)
+
+
+@app.post(
+    "/api/generate-pdf",
+    summary="Generate PDF from conversion result",
+    response_class=Response,
+)
+def generate_pdf(payload: GeneratePdfRequest) -> Response:
+    """Generate a downloadable PDF document containing original text and Braille output."""
+    if not payload.input.strip() and not payload.braille.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot generate PDF from empty content. Please perform a conversion first.",
+        )
+
+    try:
+        pdf_bytes = generate_conversion_pdf(payload.input, payload.braille)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate PDF: {exc}",
+        )
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": 'attachment; filename="braille-conversion.pdf"',
+        },
+    )
 

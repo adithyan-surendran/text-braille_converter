@@ -4,6 +4,7 @@ import type {
   DecodeResponse,
   EncodeRequest,
   EncodeResponse,
+  GeneratePdfRequest,
 } from '../types/api.ts';
 
 const API_BASE_URL: string =
@@ -135,6 +136,31 @@ export async function encodeFile(file: File): Promise<EncodeResponse> {
     }
 
     return (await response.json()) as EncodeResponse;
+  } catch (error) {
+    return handleNetworkError(error);
+  }
+}
+
+/**
+ * Sends conversion data to generate and download a PDF.
+ * Calls POST /api/generate-pdf
+ */
+export async function generatePdf(data: GeneratePdfRequest): Promise<Blob> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/generate-pdf`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      const errorMessage = await parseErrorResponse(response);
+      throw new Error(errorMessage);
+    }
+
+    return await response.blob();
   } catch (error) {
     return handleNetworkError(error);
   }

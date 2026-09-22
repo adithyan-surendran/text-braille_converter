@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
-import { decodeBraille, encodeFile, encodeText } from '../services/api.ts';
-import type { ConversionHistoryItem, ConversionMode } from '../types/api.ts';
+import { decodeBraille, encodeFile, encodeText, generatePdf } from '../services/api.ts';
+import type { ConversionHistoryItem, ConversionMode, GeneratePdfRequest } from '../types/api.ts';
+import { downloadBlobFile } from '../utils/download.ts';
 import { generateHistoryId } from '../utils/text.ts';
 import ConversionHistory from './ConversionHistory.tsx';
 import InputPanel from './InputPanel.tsx';
@@ -12,6 +13,7 @@ export default function Converter() {
   const [input, setInput] = useState<string>('');
   const [output, setOutput] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
   const [copyError, setCopyError] = useState<string | null>(null);
@@ -210,6 +212,37 @@ export default function Converter() {
     setStatusMessage('');
   };
 
+  const handleDownloadPdf = async () => {
+    if (isGeneratingPdf || isLoading || !output) return;
+
+    setError(null);
+    setIsGeneratingPdf(true);
+    setStatusMessage('Generating PDF...');
+
+    try {
+      const payload: GeneratePdfRequest =
+        mode === 'text-to-braille'
+          ? { input, braille: output }
+          : { input: output, braille: input };
+
+      const blob = await generatePdf(payload);
+      downloadBlobFile(blob, 'braille-conversion.pdf');
+      setStatusMessage('PDF downloaded successfully.');
+      setTimeout(() => {
+        setStatusMessage('');
+      }, 2500);
+    } catch (err) {
+      setStatusMessage('');
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('Failed to generate PDF. Please try again.');
+      }
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
+
   const handleRestore = (item: ConversionHistoryItem) => {
     setMode(item.mode);
     setInput(item.inputText);
@@ -246,7 +279,7 @@ export default function Converter() {
         <ModeToggle
           mode={mode}
           onModeChange={handleModeChange}
-          disabled={isLoading}
+          disabled={isLoading || isGeneratingPdf}
         />
       </div>
 
@@ -332,7 +365,7 @@ export default function Converter() {
                 setStatusMessage('');
               }
             }}
-            disabled={isLoading}
+            disabled={isLoading || isGeneratingPdf}
             onSwitchToOutput={() => setMobileTab('output')}
             uploadedFileName={uploadedFileName}
             onFileUpload={handleFileUploadSuccess}
@@ -350,10 +383,12 @@ export default function Converter() {
             outputRef={outputRef}
             mode={mode}
             value={output}
-            disabled={isLoading}
+            disabled={isLoading || isGeneratingPdf}
             onSwitchToInput={() => setMobileTab('input')}
             onDownloadSuccess={handleDownloadSuccess}
             onError={handleDownloadError}
+            onDownloadPdf={handleDownloadPdf}
+            isGeneratingPdf={isGeneratingPdf}
           />
         </div>
       </div>
@@ -363,18 +398,18 @@ export default function Converter() {
         <button
           type="button"
           onClick={handleConvert}
-          disabled={isLoading}
+          disabled={isLoading || isGeneratingPdf}
           aria-busy={isLoading}
           className="w-full sm:w-auto inline-flex items-center justify-center px-8 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold text-base shadow-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 focus-visible:ring-2 focus-visible:ring-blue-400/40 disabled:opacity-60 disabled:cursor-not-allowed transition-all cursor-pointer min-h-[44px]"
         >
           {isLoading ? 'Converting...' : 'Convert'}
         </button>
 
-        <div className="flex items-center gap-2.5 sm:gap-3 w-full sm:w-auto">
+        <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 w-full sm:w-auto">
           <button
             type="button"
             onClick={handleCopy}
-            disabled={!output || isLoading}
+            disabled={!output || isLoading || isGeneratingPdf}
             aria-label="Copy output to clipboard"
             className={`flex-1 sm:flex-initial inline-flex items-center justify-center px-6 py-3 rounded-xl font-medium text-base border shadow-2xs focus-visible:outline-2 focus-visible:outline-offset-2 transition-all cursor-pointer min-h-[44px] ${
               copied
@@ -388,7 +423,7 @@ export default function Converter() {
           <button
             type="button"
             onClick={handleClear}
-            disabled={isLoading}
+            disabled={isLoading || isGeneratingPdf}
             aria-label="Clear input and output"
             className="flex-1 sm:flex-initial inline-flex items-center justify-center px-6 py-3 rounded-xl bg-white hover:bg-slate-100 active:bg-slate-200 text-slate-700 font-medium text-base border border-slate-300 shadow-2xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-600 focus-visible:ring-2 focus-visible:ring-slate-400/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer min-h-[44px]"
           >
@@ -402,8 +437,9 @@ export default function Converter() {
         history={history}
         onRestore={handleRestore}
         onClearHistory={handleClearHistory}
-        disabled={isLoading}
+        disabled={isLoading || isGeneratingPdf}
       />
     </div>
   );
 }
+

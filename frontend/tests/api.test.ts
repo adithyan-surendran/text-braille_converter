@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { decodeBraille, encodeFile, encodeText } from '../src/services/api.ts';
+import { decodeBraille, encodeFile, encodeText, generatePdf } from '../src/services/api.ts';
 
 describe('API Service (api.ts)', () => {
   const originalFetch = globalThis.fetch;
@@ -133,4 +133,70 @@ describe('API Service (api.ts)', () => {
       );
     });
   });
+
+  describe('generatePdf (PDF download)', () => {
+    it('sends JSON payload to /api/generate-pdf with Content-Type application/json and returns a Blob', async () => {
+      const mockBlob = new Blob(['%PDF-1.4 binary content'], { type: 'application/pdf' });
+      globalThis.fetch = vi.fn().mockResolvedValueOnce({
+        ok: true,
+        blob: async () => mockBlob,
+      } as unknown as Response);
+
+      const payload = { input: 'Hello 123!', braille: '⠠⠓⠑⠇⠇⠕ ⠼⠁⠃⠉⠖' };
+      const result = await generatePdf(payload);
+
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        'http://127.0.0.1:8000/api/generate-pdf',
+        expect.objectContaining({
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        })
+      );
+
+      expect(result).toBe(mockBlob);
+      expect(result.type).toBe('application/pdf');
+    });
+
+    it('handles HTTP 400 error from backend when content is invalid or empty', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({
+          detail: 'Cannot generate PDF from empty content. Please perform a conversion first.',
+        }),
+      } as unknown as Response);
+
+      await expect(generatePdf({ input: '', braille: '' })).rejects.toThrow(
+        'Cannot generate PDF from empty content. Please perform a conversion first.'
+      );
+    });
+
+    it('handles HTTP 422 error from backend when fields are missing or invalid', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValueOnce({
+        ok: false,
+        status: 422,
+        json: async () => ({
+          detail: [{ loc: ['body', 'input'], msg: 'Field required', type: 'missing' }],
+        }),
+      } as unknown as Response);
+
+      await expect(
+        generatePdf({ input: '', braille: '' } as unknown as { input: string; braille: string })
+      ).rejects.toThrow('Field required');
+    });
+
+    it('handles network failure during PDF generation request', async () => {
+      globalThis.fetch = vi.fn().mockRejectedValueOnce(new TypeError('Failed to fetch'));
+
+      await expect(
+        generatePdf({ input: 'Test', braille: '⠠⠞⠑⠎⠞' })
+      ).rejects.toThrow(
+        'Unable to connect to the converter service. Please make sure the backend server is running.'
+      );
+    });
+  });
 });
+

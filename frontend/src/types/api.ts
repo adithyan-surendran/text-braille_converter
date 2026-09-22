@@ -29,6 +29,11 @@ export type DecodeResponse = {
   text: string;
 };
 
+export type GeneratePdfRequest = {
+  input: string;
+  braille: string;
+};
+
 export type ApiErrorDetail = {
   loc?: (string | number)[];
   msg?: string;
