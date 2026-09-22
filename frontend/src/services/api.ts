@@ -113,3 +113,30 @@ export async function decodeBraille(braille: string): Promise<DecodeResponse> {
     return handleNetworkError(error);
   }
 }
+
+/**
+ * Sends a PDF file to extract text and encode to Braille.
+ * Calls POST /api/encode-file with multipart/form-data.
+ */
+export async function encodeFile(file: File): Promise<EncodeResponse> {
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    // Note: Do not set Content-Type header so the browser sets multipart/form-data with boundary
+    const response = await fetch(`${API_BASE_URL}/api/encode-file`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorMessage = await parseErrorResponse(response);
+      throw new Error(errorMessage);
+    }
+
+    return (await response.json()) as EncodeResponse;
+  } catch (error) {
+    return handleNetworkError(error);
+  }
+}
+

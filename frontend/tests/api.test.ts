@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { decodeBraille, encodeText } from '../src/services/api.ts';
+import { decodeBraille, encodeFile, encodeText } from '../src/services/api.ts';
 
 describe('API Service (api.ts)', () => {
   const originalFetch = globalThis.fetch;
@@ -82,5 +82,55 @@ describe('API Service (api.ts)', () => {
     await expect(encodeText('Hello')).rejects.toThrow(
       'Unable to connect to the converter service. Please make sure the backend server is running.'
     );
+  });
+
+  describe('encodeFile (PDF upload)', () => {
+    it('sends FormData to /api/encode-file without manual Content-Type header and returns data', async () => {
+      const mockResponse = { input: 'PDF Extracted Text', braille: '⠠⠏⠙⠋' };
+      globalThis.fetch = vi.fn().mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      } as unknown as Response);
+
+      const file = new File(['%PDF-1.4 dummy'], 'sample.pdf', { type: 'application/pdf' });
+      const result = await encodeFile(file);
+
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        'http://127.0.0.1:8000/api/encode-file',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.any(FormData),
+        })
+      );
+
+      // Verify no manual Content-Type header was passed
+      const fetchArgs = vi.mocked(globalThis.fetch).mock.calls[0][1];
+      expect(fetchArgs?.headers).toBeUndefined();
+      expect(result).toEqual(mockResponse);
+    });
+
+    it('handles HTTP 400 error from backend for invalid or scanned PDF', async () => {
+      globalThis.fetch = vi.fn().mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({
+          detail: 'Could not extract text from this PDF. Scanned/image-only PDFs are not supported yet.',
+        }),
+      } as unknown as Response);
+
+      const file = new File(['%PDF-1.4 scanned'], 'scanned.pdf', { type: 'application/pdf' });
+      await expect(encodeFile(file)).rejects.toThrow(
+        'Could not extract text from this PDF. Scanned/image-only PDFs are not supported yet.'
+      );
+    });
+
+    it('handles network failure during PDF file upload', async () => {
+      globalThis.fetch = vi.fn().mockRejectedValueOnce(new TypeError('Failed to fetch'));
+
+      const file = new File(['%PDF-1.4 dummy'], 'doc.pdf', { type: 'application/pdf' });
+      await expect(encodeFile(file)).rejects.toThrow(
+        'Unable to connect to the converter service. Please make sure the backend server is running.'
+      );
+    });
   });
 });

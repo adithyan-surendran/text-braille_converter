@@ -12,6 +12,7 @@ interface InputPanelProps {
   inputRef?: React.Ref<HTMLTextAreaElement>;
   uploadedFileName?: string | null;
   onFileUpload?: (fileName: string, content: string) => void;
+  onPdfUpload?: (file: File) => void;
   onFileRemove?: () => void;
   onError?: (error: string) => void;
 }
@@ -37,6 +38,7 @@ export default function InputPanel({
   inputRef,
   uploadedFileName,
   onFileUpload,
+  onPdfUpload,
   onFileRemove,
   onError,
 }: InputPanelProps) {
@@ -64,9 +66,13 @@ export default function InputPanel({
   }, [uploadedFileName]);
 
   const processFile = async (file: File) => {
-    // Validate file extension (.txt only)
-    if (!file.name.toLowerCase().endsWith('.txt')) {
-      const errorMsg = 'Invalid file type. Please upload a .txt file.';
+    const lowerName = file.name.toLowerCase();
+    const isTxt = lowerName.endsWith('.txt');
+    const isPdf = lowerName.endsWith('.pdf');
+
+    // Validate file extension (.txt or .pdf only)
+    if (!isTxt && !isPdf) {
+      const errorMsg = 'Invalid file type. Please upload a .txt or .pdf file.';
       setInternalFileName(null);
       if (onError) {
         onError(errorMsg);
@@ -76,12 +82,19 @@ export default function InputPanel({
 
     // Validate file size (100 KB limit)
     if (file.size > MAX_FILE_SIZE_BYTES) {
-      const errorMsg =
-        'File size exceeds the 100 KB limit. Please choose a smaller .txt file.';
+      const fileType = isPdf ? '.pdf' : '.txt';
+      const errorMsg = `File size exceeds the 100 KB limit. Please choose a smaller ${fileType} file.`;
       setInternalFileName(null);
       if (onError) {
         onError(errorMsg);
       }
+      return;
+    }
+
+    // Handle PDF upload workflow
+    if (isPdf) {
+      setInternalFileName(file.name);
+      onPdfUpload?.(file);
       return;
     }
 
@@ -244,7 +257,7 @@ export default function InputPanel({
             <span className="text-base" aria-hidden="true">
               📥
             </span>
-            <span>Drop .txt file to upload</span>
+            <span>Drop .txt file to upload (or .pdf file)</span>
           </div>
         )}
 
@@ -258,19 +271,19 @@ export default function InputPanel({
               htmlFor="txt-file-upload"
               className="text-xs font-medium text-slate-700 shrink-0"
             >
-              Upload .txt:
+              Upload .txt / .pdf:
             </label>
             <input
               ref={fileInputRef}
               id="txt-file-upload"
               type="file"
-              accept=".txt"
+              accept=".txt,.pdf"
               disabled={disabled}
               onClick={(e) => {
                 (e.target as HTMLInputElement).value = '';
               }}
               onChange={handleFileChange}
-              aria-label="Upload .txt file"
+              aria-label="Upload .txt file or .pdf file"
               className="text-xs text-slate-500 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border file:border-slate-300 file:text-xs file:font-medium file:bg-white hover:file:bg-slate-100 file:text-slate-700 file:cursor-pointer cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
             />
             <span className="text-[11px] text-slate-400 hidden sm:inline select-none">

@@ -9,6 +9,7 @@ import type { EncodeResponse } from '../src/types/api.ts';
 vi.mock('../src/services/api.ts', () => ({
   encodeText: vi.fn(),
   decodeBraille: vi.fn(),
+  encodeFile: vi.fn(),
 }));
 
 describe('Converter Component', () => {
@@ -1140,7 +1141,7 @@ describe('Converter Component', () => {
 
       const fileInput = screen.getByLabelText(/upload \.txt file/i);
       expect(fileInput).toBeInTheDocument();
-      expect(fileInput).toHaveAttribute('accept', '.txt');
+      expect(fileInput).toHaveAttribute('accept', '.txt,.pdf');
 
       await user.upload(fileInput, file);
 
@@ -1180,11 +1181,11 @@ describe('Converter Component', () => {
       });
     });
 
-    it('rejects files that do not have .txt extension and displays accessible error alert', async () => {
+    it('rejects files that do not have .txt or .pdf extension and displays accessible error alert', async () => {
       render(<Converter />);
 
-      const invalidFile = new File(['%PDF-1.4 sample'], 'document.pdf', {
-        type: 'application/pdf',
+      const invalidFile = new File(['sample docx content'], 'document.docx', {
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       });
 
       const fileInput = screen.getByLabelText(/upload \.txt file/i);
@@ -1192,7 +1193,7 @@ describe('Converter Component', () => {
 
       // Error alert displayed
       const alert = screen.getByRole('alert');
-      expect(alert).toHaveTextContent('Invalid file type. Please upload a .txt file.');
+      expect(alert).toHaveTextContent('Invalid file type. Please upload a .txt or .pdf file.');
 
       // Filename badge not displayed
       expect(screen.queryByTestId('uploaded-file-name')).not.toBeInTheDocument();
@@ -1860,23 +1861,23 @@ describe('Converter Component', () => {
       expect(screen.getByText('3 lines · 20 characters')).toBeInTheDocument();
     });
 
-    it('rejects an invalid file type (.pdf, .png) dropped on the dropzone with an alert', async () => {
+    it('rejects an invalid file type (.png, .docx) dropped on the dropzone with an alert', async () => {
       render(<Converter />);
 
       const dropzone = screen.getByTestId('file-dropzone');
-      const pdfFile = new File(['%PDF-1.4 dummy content'], 'document.pdf', {
-        type: 'application/pdf',
+      const imageFile = new File(['image dummy content'], 'document.png', {
+        type: 'image/png',
       });
 
       fireEvent.drop(dropzone, {
         dataTransfer: {
-          files: [pdfFile],
+          files: [imageFile],
         },
       });
 
       await waitFor(() => {
         expect(screen.getByRole('alert')).toHaveTextContent(
-          'Invalid file type. Please upload a .txt file.'
+          'Invalid file type. Please upload a .txt or .pdf file.'
         );
       });
 
@@ -2416,20 +2417,20 @@ describe('Converter Component', () => {
       expect(textarea).toHaveValue('Existing valid content');
       expect(screen.getByText('22 characters')).toBeInTheDocument();
 
-      // 2. Try to drop invalid .pdf file onto dropzone
-      const invalidPdf = new File(['%PDF-1.4 dummy'], 'unsupported.pdf', {
-        type: 'application/pdf',
+      // 2. Try to drop invalid .docx file onto dropzone
+      const invalidDocx = new File(['dummy docx content'], 'unsupported.docx', {
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       });
       fireEvent.drop(dropzone, {
         dataTransfer: {
-          files: [invalidPdf],
+          files: [invalidDocx],
         },
       });
 
       // Error alert displayed
       await waitFor(() => {
         expect(screen.getByRole('alert')).toHaveTextContent(
-          'Invalid file type. Please upload a .txt file.'
+          'Invalid file type. Please upload a .txt or .pdf file.'
         );
       });
       // Badge is cleared
@@ -2778,6 +2779,211 @@ describe('Converter Component', () => {
 
       // Input restored
       expect(textarea).toHaveValue('Keyboard test');
+    });
+  });
+
+  describe('V4.7 PDF Upload & Selectable Text Extraction', () => {
+    it('uploads a valid .pdf file via file picker, displays extracted text and Braille output', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.encodeFile).mockResolvedValueOnce({
+        input: 'Sample PDF Content',
+        braille: '⠠⠎⠁⠍⠏⠇⠑ ⠠⠏⠙⠋',
+      });
+
+      render(<Converter />);
+      const fileInput = screen.getByLabelText(/upload \.txt file or \.pdf file/i);
+      const pdfFile = new File(['%PDF-1.4 dummy'], 'sample.pdf', { type: 'application/pdf' });
+
+      await user.upload(fileInput, pdfFile);
+
+      // Verify encodeFile was called with the file
+      expect(api.encodeFile).toHaveBeenCalledWith(pdfFile);
+
+      // Verify input textarea contains extracted text
+      const textarea = screen.getByLabelText(/english text/i);
+      await waitFor(() => {
+        expect(textarea).toHaveValue('Sample PDF Content');
+      });
+
+      // Verify output region contains Braille
+      expect(screen.getByRole('region', { name: /braille output/i })).toHaveTextContent(
+        '⠠⠎⠁⠍⠏⠇⠑ ⠠⠏⠙⠋'
+      );
+
+      // Verify filename badge is displayed
+      expect(screen.getByTestId('uploaded-file-name')).toHaveTextContent('sample.pdf');
+
+      // Verify character count matches extracted text (18 characters)
+      expect(screen.getByText('18 characters')).toBeInTheDocument();
+
+      // Verify conversion is recorded in V4.6 history
+      expect(screen.getByText('(1 / 5)')).toBeInTheDocument();
+      expect(screen.getByTestId('history-item-0')).toBeInTheDocument();
+      expect(screen.getByTestId('history-input-0')).toHaveTextContent('Sample PDF Content');
+    });
+
+    it('uploads a valid .pdf file via drag-and-drop', async () => {
+      vi.mocked(api.encodeFile).mockResolvedValueOnce({
+        input: 'Dropped PDF Text',
+        braille: '⠠⠙⠗⠕⠏⠏⠑⠙',
+      });
+
+      render(<Converter />);
+      const dropzone = screen.getByTestId('file-dropzone');
+      const pdfFile = new File(['%PDF-1.4 drop'], 'dropped.pdf', { type: 'application/pdf' });
+
+      fireEvent.drop(dropzone, {
+        dataTransfer: {
+          files: [pdfFile],
+        },
+      });
+
+      await waitFor(() => {
+        expect(api.encodeFile).toHaveBeenCalledWith(pdfFile);
+        expect(screen.getByLabelText(/english text/i)).toHaveValue('Dropped PDF Text');
+      });
+
+      expect(screen.getByTestId('uploaded-file-name')).toHaveTextContent('dropped.pdf');
+      expect(screen.getByRole('region', { name: /braille output/i })).toHaveTextContent('⠠⠙⠗⠕⠏⠏⠑⠙');
+    });
+
+    it('rejects a PDF exceeding the 100 KB limit before calling the API', async () => {
+      const user = userEvent.setup();
+      render(<Converter />);
+
+      const fileInput = screen.getByLabelText(/upload \.txt file or \.pdf file/i);
+      const oversizedPdf = new File(['A'.repeat(101 * 1024)], 'huge.pdf', {
+        type: 'application/pdf',
+      });
+
+      await user.upload(fileInput, oversizedPdf);
+
+      // API is never called
+      expect(api.encodeFile).not.toHaveBeenCalled();
+
+      // Error alert is displayed
+      const alert = screen.getByRole('alert');
+      expect(alert).toHaveTextContent(
+        'File size exceeds the 100 KB limit. Please choose a smaller .pdf file.'
+      );
+      expect(screen.queryByTestId('uploaded-file-name')).not.toBeInTheDocument();
+    });
+
+    it('displays error alert when PDF extraction fails or PDF contains only scanned images', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.encodeFile).mockRejectedValueOnce(
+        new Error(
+          'Could not extract text from this PDF. Scanned/image-only PDFs are not supported yet.'
+        )
+      );
+
+      render(<Converter />);
+      const fileInput = screen.getByLabelText(/upload \.txt file or \.pdf file/i);
+      const scannedPdf = new File(['%PDF-1.4 image'], 'scanned.pdf', { type: 'application/pdf' });
+
+      await user.upload(fileInput, scannedPdf);
+
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toHaveTextContent(
+          'Could not extract text from this PDF. Scanned/image-only PDFs are not supported yet.'
+        );
+      });
+
+      // Filename badge not shown
+      expect(screen.queryByTestId('uploaded-file-name')).not.toBeInTheDocument();
+      // No history added
+      expect(screen.getByText(/no recent conversions yet\./i)).toBeInTheDocument();
+    });
+
+    it('shows loading state while PDF is being processed and converts', async () => {
+      let resolvePromise: (value: { input: string; braille: string }) => void;
+      const pendingPromise = new Promise<{ input: string; braille: string }>((res) => {
+        resolvePromise = res;
+      });
+      vi.mocked(api.encodeFile).mockReturnValueOnce(pendingPromise);
+
+      render(<Converter />);
+      const fileInput = screen.getByLabelText(/upload \.txt file or \.pdf file/i);
+      const pdf = new File(['%PDF-1.4 pending'], 'doc.pdf', { type: 'application/pdf' });
+
+      fireEvent.change(fileInput, { target: { files: [pdf] } });
+
+      // Verify loading state
+      expect(screen.getByRole('status')).toHaveTextContent(/extracting text from pdf and converting/i);
+      expect(screen.getByRole('button', { name: /converting/i })).toBeDisabled();
+
+      // Resolve API
+      resolvePromise!({ input: 'Done Text', braille: '⠠⠙⠕⠝⠑' });
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/english text/i)).toHaveValue('Done Text');
+      });
+      expect(screen.getByRole('button', { name: /^convert$/i })).toBeEnabled();
+    });
+
+    it('restoring a PDF conversion from history does not make extra API calls and clears the file badge', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.encodeFile).mockResolvedValueOnce({
+        input: 'PDF Entry 1',
+        braille: '⠠⠏⠙⠋ ⠼⠁',
+      });
+
+      render(<Converter />);
+      const fileInput = screen.getByLabelText(/upload \.txt file or \.pdf file/i);
+      const pdf = new File(['%PDF-1.4'], 'history.pdf', { type: 'application/pdf' });
+
+      await user.upload(fileInput, pdf);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('uploaded-file-name')).toHaveTextContent('history.pdf');
+        expect(screen.getByText('(1 / 5)')).toBeInTheDocument();
+      });
+
+      expect(api.encodeFile).toHaveBeenCalledTimes(1);
+
+      // Now clear via global Clear
+      await user.click(screen.getByRole('button', { name: /clear input and output/i }));
+      expect(screen.queryByTestId('uploaded-file-name')).not.toBeInTheDocument();
+
+      // Click Restore on the history item
+      const restoreBtn = screen.getByRole('button', {
+        name: /restore text to braille conversion: "PDF Entry 1"/i,
+      });
+      await user.click(restoreBtn);
+
+      // Restored content
+      expect(screen.getByLabelText(/english text/i)).toHaveValue('PDF Entry 1');
+      expect(screen.getByRole('region', { name: /braille output/i })).toHaveTextContent('⠠⠏⠙⠋ ⠼⠁');
+      // No extra API call
+      expect(api.encodeFile).toHaveBeenCalledTimes(1);
+      // File badge remains cleared
+      expect(screen.queryByTestId('uploaded-file-name')).not.toBeInTheDocument();
+    });
+
+    it('replaces an uploaded PDF with a .txt file correctly', async () => {
+      const user = userEvent.setup();
+      vi.mocked(api.encodeFile).mockResolvedValueOnce({
+        input: 'First PDF content',
+        braille: '⠠⠏⠙⠋',
+      });
+
+      render(<Converter />);
+      const fileInput = screen.getByLabelText(/upload \.txt file or \.pdf file/i);
+      const pdf = new File(['%PDF-1.4'], 'initial.pdf', { type: 'application/pdf' });
+
+      // 1. Upload PDF
+      await user.upload(fileInput, pdf);
+      await waitFor(() => {
+        expect(screen.getByTestId('uploaded-file-name')).toHaveTextContent('initial.pdf');
+        expect(screen.getByLabelText(/english text/i)).toHaveValue('First PDF content');
+      });
+
+      // 2. Replace with TXT
+      const txt = new File(['Replaced with text file'], 'replacement.txt', { type: 'text/plain' });
+      await user.upload(fileInput, txt);
+
+      expect(screen.getByTestId('uploaded-file-name')).toHaveTextContent('replacement.txt');
+      expect(screen.getByLabelText(/english text/i)).toHaveValue('Replaced with text file');
     });
   });
 });

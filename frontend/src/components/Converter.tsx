@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { decodeBraille, encodeText } from '../services/api.ts';
+import { decodeBraille, encodeFile, encodeText } from '../services/api.ts';
 import type { ConversionHistoryItem, ConversionMode } from '../types/api.ts';
 import { generateHistoryId } from '../utils/text.ts';
 import ConversionHistory from './ConversionHistory.tsx';
@@ -148,6 +148,50 @@ export default function Converter() {
     }, 0);
   };
 
+  const handlePdfUpload = async (file: File) => {
+    if (isLoading) return;
+
+    setError(null);
+    setCopied(false);
+    setCopyError(null);
+    setIsLoading(true);
+    setStatusMessage('Extracting text from PDF and converting...');
+
+    try {
+      const result = await encodeFile(file);
+      setMode('text-to-braille');
+      setInput(result.input);
+      setOutput(result.braille);
+      setUploadedFileName(file.name);
+      setMobileTab('output');
+      setStatusMessage(`File "${file.name}" extracted and converted successfully.`);
+      setHistory((prev) => [
+        {
+          id: generateHistoryId(),
+          mode: 'text-to-braille' as const,
+          inputText: result.input,
+          outputText: result.braille,
+          timestamp: Date.now(),
+        },
+        ...prev,
+      ].slice(0, 5));
+      outputRef.current?.focus();
+    } catch (err) {
+      setUploadedFileName(null);
+      setStatusMessage('');
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('Failed to extract text from PDF. Please try again.');
+      }
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 0);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleFileRemove = () => {
     setUploadedFileName(null);
     setStatusMessage('File removed.');
@@ -292,6 +336,7 @@ export default function Converter() {
             onSwitchToOutput={() => setMobileTab('output')}
             uploadedFileName={uploadedFileName}
             onFileUpload={handleFileUploadSuccess}
+            onPdfUpload={handlePdfUpload}
             onFileRemove={handleFileRemove}
             onError={handleFileUploadError}
           />

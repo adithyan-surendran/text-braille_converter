@@ -8,6 +8,7 @@ from app.main import (
     EncodeRequest,
     app,
     decode_braille,
+    encode_file,
     encode_text,
     health_check,
 )
@@ -18,6 +19,7 @@ async def call_asgi(
     path: str,
     data: dict | None = None,
     headers: dict[str, str] | None = None,
+    raw_body: bytes | None = None,
 ) -> tuple[int, dict, dict[str, str]]:
     """Helper to dispatch ASGI requests directly to the FastAPI app without extra dependencies."""
     headers_list: list[tuple[bytes, bytes]] = []
@@ -25,9 +27,12 @@ async def call_asgi(
         for k, v in headers.items():
             headers_list.append((k.lower().encode(), v.encode()))
 
-    body_bytes = json.dumps(data).encode() if data is not None else b""
-    if data is not None and not any(h[0] == b"content-type" for h in headers_list):
-        headers_list.append((b"content-type", b"application/json"))
+    if raw_body is not None:
+        body_bytes = raw_body
+    else:
+        body_bytes = json.dumps(data).encode() if data is not None else b""
+        if data is not None and not any(h[0] == b"content-type" for h in headers_list):
+            headers_list.append((b"content-type", b"application/json"))
 
     scope = {
         "type": "http",
@@ -223,3 +228,154 @@ async def test_contract_cors_headers():
     )
     assert status == 200
     assert headers.get("access-control-allow-origin") == "http://127.0.0.1:5173"
+
+
+# --- V4.7 POST /api/encode-file Tests ---
+
+
+def make_multipart_body(
+    filename: str, file_bytes: bytes, content_type: str = "application/pdf"
+) -> tuple[bytes, dict[str, str]]:
+    """Construct a multipart/form-data payload with a boundary."""
+    boundary = "----WebKitFormBoundaryV47TestingBoundary"
+    body = (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+        f"Content-Type: {content_type}\r\n\r\n"
+    ).encode() + file_bytes + f"\r\n--{boundary}--\r\n".encode()
+    headers = {"Content-Type": f"multipart/form-data; boundary={boundary}"}
+    return body, headers
+
+
+def create_test_pdf(text: str) -> bytes:
+    """Generate a minimal valid PDF containing selectable text."""
+    escaped_text = text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+    stream_content = f"BT\n/F1 24 Tf\n100 700 Td\n({escaped_text}) Tj\nET\n".encode()
+    stream_len = len(stream_content)
+    return (
+        b"%PDF-1.4\n"
+        b"1 0 obj <</Type /Catalog /Pages 2 0 R>> endobj\n"
+        b"2 0 obj <</Type /Pages /Kids [3 0 R] /Count 1>> endobj\n"
+        b"3 0 obj <</Type /Page /Parent 2 0 R /Resources <</Font <</F1 4 0 R>>>> /MediaBox [0 0 612 792] /Contents 5 0 R>> endobj\n"
+        b"4 0 obj <</Type /Font /Subtype /Type1 /BaseFont /Helvetica>> endobj\n"
+        b"5 0 obj <</Length " + str(stream_len).encode() + b">> stream\n"
+        + stream_content
+        + b"endstream\nendobj\n"
+        b"xref\n0 6\n0000000000 65535 f \n"
+        b"trailer <</Size 6 /Root 1 0 R>>\nstartxref\n999\n%%EOF\n"
+    )
+
+
+def create_blank_pdf() -> bytes:
+    """Generate a valid PDF with a blank page and no text (simulates scanned/image-only)."""
+    import io
+    from pypdf import PdfWriter
+
+    writer = PdfWriter()
+    writer.add_blank_page(width=100, height=100)
+    buf = io.BytesIO()
+    writer.write(buf)
+    return buf.getvalue()
+
+
+@pytest.mark.anyio
+async def test_contract_encode_file_valid_pdf():
+    pdf_bytes = create_test_pdf("Hello 123!")
+    body, headers = make_multipart_body("sample.pdf", pdf_bytes)
+    status, data, _ = await call_asgi("POST", "/api/encode-file", headers=headers, raw_body=body)
+
+    assert status == 200
+    assert data["input"] == "Hello 123!"
+    assert data["braille"] == "⠠⠓⠑⠇⠇⠕ ⠼⠁⠃⠉⠖"
+
+
+@pytest.mark.anyio
+async def test_contract_encode_file_capitals_and_punctuation():
+    pdf_bytes = create_test_pdf("Braille Test: Year 2026.")
+    body, headers = make_multipart_body("test.pdf", pdf_bytes)
+    status, data, _ = await call_asgi("POST", "/api/encode-file", headers=headers, raw_body=body)
+
+    assert status == 200
+    assert data["input"] == "Braille Test: Year 2026."
+    assert "⠠⠃⠗⠁⠊⠇⠇⠑" in data["braille"]
+    assert "⠼" in data["braille"]
+
+
+@pytest.mark.anyio
+async def test_contract_encode_file_unsupported_file_extension():
+    txt_bytes = b"Hello world"
+    body, headers = make_multipart_body("document.txt", txt_bytes, content_type="text/plain")
+    status, data, _ = await call_asgi("POST", "/api/encode-file", headers=headers, raw_body=body)
+
+    assert status == 400
+    assert "detail" in data
+    assert "unsupported file type" in data["detail"].lower()
+
+
+@pytest.mark.anyio
+async def test_contract_encode_file_exceeds_size_limit():
+    # 101 KB dummy payload
+    oversized_bytes = b"A" * (101 * 1024)
+    body, headers = make_multipart_body("large.pdf", oversized_bytes)
+    status, data, _ = await call_asgi("POST", "/api/encode-file", headers=headers, raw_body=body)
+
+    assert status == 400
+    assert "detail" in data
+    assert "100 kb" in data["detail"].lower()
+
+
+@pytest.mark.anyio
+async def test_contract_encode_file_corrupted_pdf():
+    corrupt_bytes = b"%PDF-1.4 completely invalid corrupt binary data that ends abruptly"
+    body, headers = make_multipart_body("corrupt.pdf", corrupt_bytes)
+    status, data, _ = await call_asgi("POST", "/api/encode-file", headers=headers, raw_body=body)
+
+    assert status == 400
+    assert "detail" in data
+    assert "corrupted" in data["detail"].lower()
+
+
+@pytest.mark.anyio
+async def test_contract_encode_file_empty_bytes():
+    body, headers = make_multipart_body("empty.pdf", b"")
+    status, data, _ = await call_asgi("POST", "/api/encode-file", headers=headers, raw_body=body)
+
+    assert status == 400
+    assert "detail" in data
+    assert "corrupted" in data["detail"].lower()
+
+
+@pytest.mark.anyio
+async def test_contract_encode_file_scanned_or_no_text():
+    blank_pdf = create_blank_pdf()
+    body, headers = make_multipart_body("scanned.pdf", blank_pdf)
+    status, data, _ = await call_asgi("POST", "/api/encode-file", headers=headers, raw_body=body)
+
+    assert status == 400
+    assert "detail" in data
+    assert "scanned/image-only" in data["detail"].lower()
+
+
+@pytest.mark.anyio
+async def test_contract_encode_file_unsupported_characters():
+    pdf_bytes = create_test_pdf("Hello @ World #1")
+    body, headers = make_multipart_body("special.pdf", pdf_bytes)
+    status, data, _ = await call_asgi("POST", "/api/encode-file", headers=headers, raw_body=body)
+
+    assert status == 400
+    assert "detail" in data
+    assert "unsupported characters" in data["detail"].lower()
+
+
+@pytest.mark.anyio
+async def test_unit_encode_file_direct():
+    import io
+    from fastapi import UploadFile
+
+    pdf_bytes = create_test_pdf("Direct Unit Test")
+    upload_file = UploadFile(filename="unit.pdf", file=io.BytesIO(pdf_bytes))
+    response = await encode_file(upload_file)
+    assert response.input == "Direct Unit Test"
+    assert "⠠⠙" in response.braille
+
+
